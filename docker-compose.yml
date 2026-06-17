@@ -1,0 +1,28 @@
+services:
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    image: webiq-demo-server
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - WEBIQ_API_KEY=${WEBIQ_API_KEY:?Set WEBIQ_API_KEY in your .env file}
+      - WEB_ORIGIN=http://localhost:8080
+      - WEBIQ_TIMEOUT_MS=${WEBIQ_TIMEOUT_MS:-15000}
+    expose:
+      - "3001"
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    image: webiq-demo-web
+    depends_on:
+      - server
+    ports:
+      - "8080:80"
+    restart: unless-stopped
