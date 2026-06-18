@@ -163,3 +163,21 @@ ARM REST with azd's token. Three traps, all learned the hard way:
 - `.env` (real `WEBIQ_API_KEY`) is **gitignored**; azd auto-creates `.azure/.gitignore` that ignores the whole `.azure/` folder (incl. its env secret file).
 - **Before every commit**, scan staged files for the key value (read it from `.env`, `String.Contains` over each staged file). Confirm 0 hits. The verification ID for the custom domain is a **public** ownership token — safe to commit; the API key is not.
 - The repo is **public** on GitHub (`webmaxru/webiq-demo`). Never commit `.env`, `.azure/`, or any real key.
+
+## I. Telemetry / Application Insights
+
+> Full reference: [docs/deployment.md](../docs/deployment.md) → "Monitoring & telemetry".
+
+### I1. `applicationinsights` default import is `undefined` at runtime (CJS trap)
+- **Symptom:** `TypeError: Cannot read properties of undefined (reading 'setup')` in `dist/appInsights.js`, even though `npm run typecheck` and `npm run build` pass.
+- **Cause:** `applicationinsights` v3 ships CommonJS with `__esModule:true` but **no default export**. With `esModuleInterop`, `import appInsights from 'applicationinsights'` compiles to `mod.default`, which is `undefined`.
+- **Fix:** use a namespace import — `import * as appInsights from 'applicationinsights'` (then `appInsights.setup(...)`, `appInsights.defaultClient`). Classic invisible-to-the-compiler bug — **run the built server** (`node server/dist/index.js`) to catch it.
+
+### I2. Init order matters
+- `server/src/appInsights.ts` must be the **first import in `index.ts`** (before express/http) so auto-instrumentation can patch the HTTP layer. It imports `./env` first for the dotenv side effect so the connection string can come from `.env` locally. No connection string ⇒ the whole module is a no-op (local dev keeps working).
+
+### I3. v3 has no `tagOverrides` on track* calls
+- The v3 `Telemetry` contract dropped `tagOverrides` (the type won't compile with it). To attach a per-event user/session id, put it in **`properties`** (we use `anonId`) and query `dcount(tostring(customDimensions.anonId))` — not the `user_Id` column.
+
+### I4. Custom events drive the dashboard + alert
+- Every sandbox run emits a `SandboxSearch` custom event; a 429/430 also emits `SandboxRateLimited`. The engagement **Workbook** and the rate-limit **scheduledQueryRules** alert both query these from `customEvents`. The alert + action group are created **only when `WEBIQ_ALERT_EMAIL` is set** (conditional Bicep), so provisioning without it is fine.

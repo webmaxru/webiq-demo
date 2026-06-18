@@ -36,12 +36,17 @@ param customDomain string = ''
 @description('Two-phase managed-cert flag. Phase 1 (false): bind the hostname as Disabled so Azure will allow the managed certificate to be created. Phase 2 (true): create the managed cert and switch the binding to SniEnabled. A single pass is impossible (cert needs the hostname; an SNI binding needs the cert).')
 param bindCertificate bool = false
 
+@description('Optional email address that receives the rate-limit alert (azd WEBIQ_ALERT_EMAIL). When empty, no action group or alert rule is created.')
+param alertEmailAddress string = ''
+
 var resourceSuffix = take(uniqueString(subscription().id, environmentName, location), 6)
 var logAnalyticsName = take('log-${environmentName}-${resourceSuffix}', 63)
+var appInsightsName = take('appi-${environmentName}-${resourceSuffix}', 63)
 var containerRegistryName = take(toLower(replace('cr${environmentName}${resourceSuffix}', '-', '')), 50)
 var containerEnvName = take('cae-${environmentName}-${resourceSuffix}', 32)
 var containerAppName = take('ca-${environmentName}-${resourceSuffix}', 32)
 var managedCertName = empty(customDomain) ? '' : take('mc-${replace(replace(customDomain, '.', '-'), '*', 'wild')}', 32)
+var monitoringEnabled = !empty(alertEmailAddress)
 
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   name: logAnalyticsName
@@ -56,6 +61,23 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
     features: {
       enableLogAccessUsingOnlyResourcePermissions: true
     }
+  }
+}
+
+// Workspace-based Application Insights, backed by the same Log Analytics workspace.
+// Receives custom events (sandbox searches), exceptions, requests and dependencies
+// from the server SDK via APPLICATIONINSIGHTS_CONNECTION_STRING (set on the app below).
+resource applicationInsights 'Microsoft.Insights/components@2020-02-02' = {
+  name: appInsightsName
+  location: location
+  tags: tags
+  kind: 'web'
+  properties: {
+    Application_Type: 'web'
+    WorkspaceResourceId: logAnalytics.id
+    IngestionMode: 'LogAnalytics'
+    publicNetworkAccessForIngestion: 'Enabled'
+    publicNetworkAccessForQuery: 'Enabled'
   }
 }
 
@@ -142,6 +164,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           name: 'webiq-api-key'
           value: webiqApiKey
         }
+        {
+          name: 'appinsights-connection-string'
+          value: applicationInsights.properties.ConnectionString
+        }
       ]
     }
     template: {
@@ -167,6 +193,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'WEBIQ_API_KEY'
               secretRef: 'webiq-api-key'
+            }
+            {
+              name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+              secretRef: 'appinsights-connection-string'
             }
           ]
           probes: [
@@ -209,6 +239,215 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Monitoring: engagement workbook + rate-limit email alert
+// ---------------------------------------------------------------------------
+
+// Unified "user engagement" dashboard, bound to the App Insights resource. All
+// queries are scoped to the SandboxSearch / SandboxRateLimited custom events and
+// the exceptions table. No query text is stored, only metadata + an anonymous id.
+var workbookContent = {
+  version: 'Notebook/1.0'
+  '$schema': 'https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json'
+  items: [
+    {
+      type: 1
+      content: {
+        json: '## Web IQ — User Engagement\nAnonymous sandbox usage analytics (role `webiq-demo-server`). Each "Run request" emits a `SandboxSearch` event with endpoint, outcome, timing and an anonymised visitor id — never the query text.'
+      }
+      name: 'title'
+    }
+    {
+      type: 3
+      content: {
+        version: 'KqlItem/1.0'
+        query: 'customEvents | where name == "SandboxSearch" | summarize Searches = count(), Visitors = dcount(tostring(customDimensions.anonId)), Failures = countif(tostring(customDimensions.outcome) == "failure")'
+        size: 4
+        title: 'Totals (selected time range)'
+        timeContext: { durationMs: 604800000 }
+        queryType: 0
+        resourceType: 'microsoft.insights/components'
+        visualization: 'table'
+      }
+      name: 'totals'
+    }
+    {
+      type: 3
+      content: {
+        version: 'KqlItem/1.0'
+        query: 'customEvents | where name == "SandboxSearch" | summarize Searches = count(), Visitors = dcount(tostring(customDimensions.anonId)) by bin(timestamp, 1h) | render timechart'
+        size: 0
+        title: 'Searches & unique visitors over time'
+        timeContext: { durationMs: 604800000 }
+        queryType: 0
+        resourceType: 'microsoft.insights/components'
+        visualization: 'timechart'
+      }
+      name: 'searches-over-time'
+    }
+    {
+      type: 3
+      content: {
+        version: 'KqlItem/1.0'
+        query: 'customEvents | where name == "SandboxSearch" | summarize Searches = count() by Endpoint = tostring(customDimensions.endpointId) | order by Searches desc | render barchart'
+        size: 0
+        title: 'Searches by endpoint'
+        timeContext: { durationMs: 604800000 }
+        queryType: 0
+        resourceType: 'microsoft.insights/components'
+        visualization: 'barchart'
+      }
+      name: 'searches-by-endpoint'
+    }
+    {
+      type: 3
+      content: {
+        version: 'KqlItem/1.0'
+        query: 'customEvents | where name == "SandboxSearch" | summarize Count = count() by Outcome = tostring(customDimensions.outcome) | render piechart'
+        size: 0
+        title: 'Outcome breakdown'
+        timeContext: { durationMs: 604800000 }
+        queryType: 0
+        resourceType: 'microsoft.insights/components'
+        visualization: 'piechart'
+      }
+      name: 'outcome-breakdown'
+    }
+    {
+      type: 3
+      content: {
+        version: 'KqlItem/1.0'
+        query: 'customEvents | where name == "SandboxSearch" | extend ms = todouble(customMeasurements.elapsedMs) | where isnotempty(ms) | summarize p50 = percentile(ms, 50), p95 = percentile(ms, 95) by bin(timestamp, 1h) | render timechart'
+        size: 0
+        title: 'Response time (p50 / p95, ms)'
+        timeContext: { durationMs: 604800000 }
+        queryType: 0
+        resourceType: 'microsoft.insights/components'
+        visualization: 'timechart'
+      }
+      name: 'latency'
+    }
+    {
+      type: 3
+      content: {
+        version: 'KqlItem/1.0'
+        query: 'customEvents | where name == "SandboxSearch" and tostring(customDimensions.outcome) == "failure" | summarize Count = count() by ErrorClass = tostring(customDimensions.errorClass) | order by Count desc | render barchart'
+        size: 0
+        title: 'Errors by class'
+        timeContext: { durationMs: 604800000 }
+        queryType: 0
+        resourceType: 'microsoft.insights/components'
+        visualization: 'barchart'
+      }
+      name: 'errors-by-class'
+    }
+    {
+      type: 3
+      content: {
+        version: 'KqlItem/1.0'
+        query: 'customEvents | where name == "SandboxRateLimited" | summarize RateLimited = count() by Endpoint = tostring(customDimensions.endpointId), bin(timestamp, 1h) | render timechart'
+        size: 0
+        title: 'Rate-limit events over time'
+        timeContext: { durationMs: 604800000 }
+        queryType: 0
+        resourceType: 'microsoft.insights/components'
+        visualization: 'timechart'
+      }
+      name: 'rate-limit'
+    }
+    {
+      type: 3
+      content: {
+        version: 'KqlItem/1.0'
+        query: 'exceptions | summarize Count = count() by Type = type, Problem = outerMessage | order by Count desc | take 10'
+        size: 0
+        title: 'Top exceptions'
+        timeContext: { durationMs: 604800000 }
+        queryType: 0
+        resourceType: 'microsoft.insights/components'
+        visualization: 'table'
+      }
+      name: 'top-exceptions'
+    }
+  ]
+  isLocked: false
+  fallbackResourceIds: [
+    applicationInsights.id
+  ]
+}
+
+resource engagementWorkbook 'Microsoft.Insights/workbooks@2023-06-01' = {
+  name: guid(applicationInsights.id, 'engagement-workbook')
+  location: location
+  tags: tags
+  kind: 'shared'
+  properties: {
+    displayName: 'Web IQ — User Engagement'
+    serializedData: string(workbookContent)
+    category: 'workbook'
+    sourceId: applicationInsights.id
+    version: 'Notebook/1.0'
+  }
+}
+
+// Email target for the rate-limit alert. Only created when an address is supplied.
+resource rateLimitActionGroup 'Microsoft.Insights/actionGroups@2023-09-01-preview' = if (monitoringEnabled) {
+  name: 'ag-${environmentName}-ratelimit'
+  location: 'global'
+  tags: tags
+  properties: {
+    groupShortName: 'webiqRL'
+    enabled: true
+    emailReceivers: [
+      {
+        name: 'ratelimit-email'
+        emailAddress: alertEmailAddress
+        useCommonAlertSchema: true
+      }
+    ]
+  }
+}
+
+// Log alert: fires (and emails) whenever a SandboxRateLimited event is ingested.
+// autoMitigate lets it resolve and re-fire on the next incident.
+resource rateLimitAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = if (monitoringEnabled) {
+  name: 'alert-${environmentName}-ratelimit'
+  location: location
+  tags: tags
+  kind: 'LogAlert'
+  properties: {
+    displayName: 'Web IQ — rate limit hit'
+    description: 'Sends an email when the Web IQ API returns a rate-limit (429/430) error in the sandbox.'
+    severity: 2
+    enabled: true
+    scopes: [
+      applicationInsights.id
+    ]
+    evaluationFrequency: 'PT5M'
+    windowSize: 'PT5M'
+    criteria: {
+      allOf: [
+        {
+          query: 'customEvents | where name == "SandboxRateLimited"'
+          timeAggregation: 'Count'
+          operator: 'GreaterThan'
+          threshold: 0
+          failingPeriods: {
+            numberOfEvaluationPeriods: 1
+            minFailingPeriodsToAlert: 1
+          }
+        }
+      ]
+    }
+    autoMitigate: true
+    actions: {
+      actionGroups: [
+        rateLimitActionGroup.id
+      ]
+    }
+  }
+}
+
 output containerRegistryName string = containerRegistry.name
 output containerRegistryLoginServer string = containerRegistry.properties.loginServer
 output containerAppName string = containerApp.name
@@ -216,3 +455,6 @@ output containerAppPrincipalId string = containerApp.identity.principalId
 output containerAppUri string = 'https://${containerApp.properties.configuration.ingress.fqdn}'
 output logAnalyticsWorkspaceId string = logAnalytics.id
 output customDomainUrl string = empty(customDomain) ? '' : 'https://${customDomain}'
+output applicationInsightsName string = applicationInsights.name
+output engagementWorkbookName string = engagementWorkbook.name
+output rateLimitAlertEnabled bool = monitoringEnabled

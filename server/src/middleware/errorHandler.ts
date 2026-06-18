@@ -8,6 +8,7 @@ import {
   WebIQError,
 } from '@microsoft/webiq';
 import type { ApiErrorInfo } from '../contract';
+import { trackException } from '../appInsights';
 import { ConfigurationError } from '../webiqClient';
 
 function objectBody(body: unknown): Record<string, unknown> | undefined {
@@ -111,8 +112,18 @@ export function toApiError(err: unknown): { httpStatus: number; info: ApiErrorIn
   };
 }
 
-export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   const { httpStatus, info } = toApiError(err);
+
+  // Catch-all errors that bypass the search route (e.g. malformed JSON bodies).
+  trackException(err, {
+    source: 'errorHandler',
+    path: req.path,
+    method: req.method,
+    errorClass: info.class,
+    statusCode: httpStatus,
+  });
+
   res.status(httpStatus).json({
     ok: false,
     endpointId: 'unknown',

@@ -193,6 +193,15 @@ export default function App() {
                   values={params}
                 />
                 <RunBar disabled={input.trim() === ''} loading={loading} onCancel={cancel} onRun={handleRun} telemetry={telemetry} />
+                <p className="text-xs leading-5 text-ink-500">
+                  Heads up: requests you run here are logged anonymously — the endpoint, timing,
+                  and outcome (never your query text) — for usage statistics. No cookies are used;
+                  see our{' '}
+                  <a className="font-semibold text-brand-600 hover:underline" href="/privacy">
+                    privacy notice
+                  </a>{' '}
+                  to opt out.
+                </p>
               </section>
               {response && !response.ok ? <ErrorBanner failure={response} /> : null}
               {loading ? (
