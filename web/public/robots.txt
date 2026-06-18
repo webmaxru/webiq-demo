@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+# Keep crawlers out of the JSON API
+Disallow: /api/
+
+Sitemap: https://webiq.isainative.dev/sitemap.xml

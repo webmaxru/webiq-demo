@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="Web IQ Sandbox — interactive playground for Microsoft Web IQ grounding APIs">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0b2a4a"/>
+      <stop offset="0.55" stop-color="#0a3a6e"/>
+      <stop offset="1" stop-color="#063a70"/>
+    </linearGradient>
+    <linearGradient id="logo" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1577d4"/>
+      <stop offset="1" stop-color="#063a70"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.8" cy="0.15" r="0.9">
+      <stop offset="0" stop-color="#1577d4" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#1577d4" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+
+  <!-- subtle grid -->
+  <g stroke="#3b82f6" stroke-opacity="0.10" stroke-width="1">
+    <path d="M0 158 H1200 M0 316 H1200 M0 474 H1200"/>
+    <path d="M300 0 V630 M600 0 V630 M900 0 V630"/>
+  </g>
+
+  <!-- logo tile -->
+  <g transform="translate(90,86)">
+    <rect width="116" height="116" rx="26" fill="url(#logo)"/>
+    <text x="57" y="62" text-anchor="middle" dominant-baseline="central"
+          font-family="'Segoe UI', Arial, sans-serif" font-weight="700"
+          font-size="56" letter-spacing="-2" fill="#ffffff">IQ</text>
+    <path d="M94 14 l6 16 16 6 -16 6 -6 16 -6 -16 -16 -6 16 -6 Z" fill="#7dd3fc"/>
+  </g>
+  <text x="232" y="132" font-family="'Segoe UI', Arial, sans-serif" font-weight="600"
+        font-size="34" fill="#bfdbfe">Web IQ Sandbox</text>
+  <text x="232" y="178" font-family="'Segoe UI', Arial, sans-serif" font-weight="400"
+        font-size="24" fill="#7ea8d8">Powered by Microsoft Web IQ</text>
+
+  <!-- headline -->
+  <text x="90" y="330" font-family="'Segoe UI', Arial, sans-serif" font-weight="800"
+        font-size="78" fill="#ffffff">Ground AI agents in</text>
+  <text x="90" y="416" font-family="'Segoe UI', Arial, sans-serif" font-weight="800"
+        font-size="78" fill="#7dd3fc">the live web.</text>
+
+  <!-- subhead -->
+  <text x="90" y="486" font-family="'Segoe UI', Arial, sans-serif" font-weight="400"
+        font-size="30" fill="#cbd9ec">An interactive playground for the Web IQ grounding APIs —</text>
+  <text x="90" y="528" font-family="'Segoe UI', Arial, sans-serif" font-weight="400"
+        font-size="30" fill="#cbd9ec">web, news, images, video, browse &amp; classic search.</text>
+
+  <!-- endpoint chips -->
+  <g font-family="'Segoe UI', Arial, sans-serif" font-weight="600" font-size="22" fill="#dbeafe">
+    <g transform="translate(90,560)">
+      <rect width="92" height="40" rx="20" fill="#ffffff" fill-opacity="0.10"/>
+      <text x="46" y="21" text-anchor="middle" dominant-baseline="central">web</text>
+    </g>
+    <g transform="translate(196,560)">
+      <rect width="104" height="40" rx="20" fill="#ffffff" fill-opacity="0.10"/>
+      <text x="52" y="21" text-anchor="middle" dominant-baseline="central">news</text>
+    </g>
+    <g transform="translate(314,560)">
+      <rect width="116" height="40" rx="20" fill="#ffffff" fill-opacity="0.10"/>
+      <text x="58" y="21" text-anchor="middle" dominant-baseline="central">images</text>
+    </g>
+    <g transform="translate(444,560)">
+      <rect width="104" height="40" rx="20" fill="#ffffff" fill-opacity="0.10"/>
+      <text x="52" y="21" text-anchor="middle" dominant-baseline="central">video</text>
+    </g>
+    <g transform="translate(562,560)">
+      <rect width="116" height="40" rx="20" fill="#ffffff" fill-opacity="0.10"/>
+      <text x="58" y="21" text-anchor="middle" dominant-baseline="central">browse</text>
+    </g>
+    <g transform="translate(692,560)">
+      <rect width="120" height="40" rx="20" fill="#ffffff" fill-opacity="0.10"/>
+      <text x="60" y="21" text-anchor="middle" dominant-baseline="central">classic</text>
+    </g>
+  </g>
+
+  <!-- decorative globe-ish arcs -->
+  <g transform="translate(1010,300)" stroke="#7dd3fc" stroke-opacity="0.55" fill="none" stroke-width="3">
+    <circle r="150" stroke-opacity="0.25"/>
+    <circle r="110" stroke-opacity="0.35"/>
+    <circle r="70" stroke-opacity="0.5"/>
+    <ellipse rx="150" ry="60"/>
+    <ellipse rx="60" ry="150"/>
+    <path d="M-150 0 H150 M0 -150 V150"/>
+  </g>
+</svg>

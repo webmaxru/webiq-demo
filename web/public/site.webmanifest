@@ -1,0 +1,15 @@
+{
+  "name": "Web IQ Sandbox",
+  "short_name": "Web IQ",
+  "description": "An interactive developer sandbox for Microsoft Web IQ grounding APIs — web, news, images, video, browse, and classic search.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#063a70",
+  "theme_color": "#063a70",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

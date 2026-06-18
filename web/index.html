@@ -3,10 +3,80 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Web IQ Sandbox</title>
+    <meta name="theme-color" content="#063a70" />
+
+    <!-- Primary SEO -->
+    <title>Web IQ Sandbox — Interactive Playground for Microsoft Web IQ Grounding APIs</title>
+    <meta
+      name="description"
+      content="A free, interactive developer sandbox for Microsoft Web IQ — the AI-native grounding APIs. Try live web, news, image, video, browse, and classic search; inspect raw JSON, copy ready-to-run SDK code, and view latency telemetry."
+    />
+    <meta
+      name="keywords"
+      content="Web IQ, Microsoft Web IQ, grounding API, AI grounding, web search API, news search API, image search API, video search API, RAG, retrieval augmented generation, AI agents, @microsoft/webiq, developer sandbox, API playground"
+    />
+    <meta name="author" content="Maxim Salnikov" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://webiq.isainative.dev/" />
+
+    <!-- Icons -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Web IQ Sandbox" />
+    <meta property="og:url" content="https://webiq.isainative.dev/" />
+    <meta property="og:title" content="Web IQ Sandbox — Ground AI agents in the live web" />
+    <meta
+      property="og:description"
+      content="An interactive playground for Microsoft Web IQ grounding APIs: web, news, images, video, browse & classic search — with raw JSON, copy-paste SDK code, and latency telemetry."
+    />
+    <meta property="og:image" content="https://webiq.isainative.dev/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Web IQ Sandbox — interactive playground for Microsoft Web IQ grounding APIs" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Web IQ Sandbox — Ground AI agents in the live web" />
+    <meta
+      name="twitter:description"
+      content="Interactive playground for Microsoft Web IQ grounding APIs: web, news, images, video, browse & classic search."
+    />
+    <meta name="twitter:image" content="https://webiq.isainative.dev/og-image.png" />
+    <meta name="twitter:image:alt" content="Web IQ Sandbox — interactive playground for Microsoft Web IQ grounding APIs" />
+
+    <!-- Structured data -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Web IQ Sandbox",
+        "url": "https://webiq.isainative.dev/",
+        "description": "An interactive developer sandbox for Microsoft Web IQ — the AI-native grounding APIs. Explore live web, news, image, video, browse, and classic search with raw JSON, copy-paste SDK code, and latency telemetry.",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Any",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "author": {
+          "@type": "Person",
+          "name": "Maxim Salnikov",
+          "url": "https://www.linkedin.com/in/webmax"
+        }
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      Web IQ Sandbox is an interactive playground for Microsoft Web IQ grounding APIs (web,
+      news, images, video, browse, and classic search). Please enable JavaScript to use it.
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

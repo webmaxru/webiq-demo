@@ -30,3 +30,6 @@ web/dist/
 # Belt-and-suspenders in case that file is ever removed:
 .azure/
 
+# Playwright MCP scratch output
+.playwright-mcp/
+
