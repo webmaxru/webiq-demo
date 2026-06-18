@@ -114,6 +114,48 @@ Stop with `npm run docker:down`.
 
 ---
 
+## Deploy to Azure (Container Apps, scale-to-zero)
+
+This repo is deploy-ready for **Azure Container Apps** using the **Azure Developer CLI (`azd`)**.
+It deploys a **single container** (the Express server serves both the API and the built
+SPA) onto a **Consumption** Container Apps environment with **`minReplicas: 0`** — so an
+**idle app consumes no compute credits** (only a brief cold start on the first request
+after idle).
+
+**What gets created:** 1 Container Apps environment (Consumption), 1 Container App
+(0.25 vCPU / 0.5 GiB, scale 0→3), 1 Azure Container Registry (Basic), 1 Log Analytics
+workspace. `WEBIQ_API_KEY` is stored as a Container App **secret**.
+
+**Idle cost:** compute **$0** (scale-to-zero) · Consumption env **$0** base · Log Analytics
+within free tier · **ACR Basic ~$5/mo** (the only unavoidable idle cost).
+
+### Prerequisites
+- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd) and Docker.
+- An Azure subscription.
+
+### One-time deploy
+
+```bash
+azd auth login                       # sign in to your Azure account
+azd env new webiq-demo               # (first time) creates the environment
+azd env set AZURE_LOCATION eastus2
+azd env set WEBIQ_API_KEY <your-web-iq-key>
+azd up                               # provision + build + push + deploy (~5-8 min)
+```
+
+`azd up` prints the public URL when done (also exported as `WEBIQ_APP_URL`). Redeploy app
+changes with `azd deploy`; tear everything down with `azd down`.
+
+> The deployment plan, architecture, and cost rationale live in
+> [`.azure/deployment-plan.md`](./.azure/deployment-plan.md).
+
+### Files
+- [`azure.yaml`](./azure.yaml) — azd service definition (single `containerapp`).
+- [`Dockerfile`](./Dockerfile) — multi-stage build → one image serving API + SPA.
+- [`infra/`](./infra) — Bicep: Container Apps env, ACR, Log Analytics, app, AcrPull role.
+
+---
+
 ## Project structure
 
 ```

@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+name: webiq-demo
+metadata:
+  template: webiq-demo@0.1.0
+
+# Single combined container: the Express server serves both the REST API
+# (/api/*) and the built React SPA on one origin. Cheapest topology — one
+# scale-to-zero Container App.
+services:
+  app:
+    project: .
+    language: ts
+    host: containerapp
+    docker:
+      path: ./Dockerfile
+      context: .

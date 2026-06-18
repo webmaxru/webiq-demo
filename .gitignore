@@ -25,3 +25,8 @@ Thumbs.db
 
 # Vite
 web/dist/
+
+# azd manages .azure/.gitignore (ignores the whole folder, incl. env secrets).
+# Belt-and-suspenders in case that file is ever removed:
+.azure/
+
