@@ -42,6 +42,18 @@ The browser never sees your API key — all SDK calls run on the backend.
 
 ---
 
+## Documentation
+
+| Doc | What's inside |
+| --- | --- |
+| [docs/architecture.md](./docs/architecture.md) | Solution architecture + extensibility model |
+| [docs/webiq-sdk.md](./docs/webiq-sdk.md) | `@microsoft/webiq` SDK reference (endpoints, enums, errors) |
+| [docs/deployment.md](./docs/deployment.md) | Azure Container Apps deploy, resources, cost model |
+| [docs/custom-domain.md](./docs/custom-domain.md) | Cloudflare → Container Apps custom domain + TLS |
+| [.github/copilot-instructions.md](./.github/copilot-instructions.md) | Gotchas & hard-won lessons for AI agents / contributors |
+
+---
+
 ## Prerequisites
 
 - **Node.js >= 22** and **npm >= 10** (required by the `@microsoft/webiq` SDK).

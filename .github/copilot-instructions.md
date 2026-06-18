@@ -1,0 +1,165 @@
+# Copilot instructions — Web IQ Sandbox
+
+Repo custom instructions for AI coding agents. Read this first; it captures the project
+shape and — more importantly — the **gotchas that previously cost the most time**, so you
+can skip the research and debugging next time.
+
+## What this is
+
+An interactive developer sandbox for the **Microsoft Web IQ** grounding APIs, built on the
+official [`@microsoft/webiq`](https://www.npmjs.com/package/@microsoft/webiq) SDK.
+
+- **Monorepo** (npm workspaces): `server/` (Express + TS, **CommonJS**) and `web/`
+  (React + Vite + Tailwind, **ESM**). Node ≥ 22, npm ≥ 10.
+- **Single combined container** in prod: the Express server serves the API **and** the
+  built SPA (`web/dist`) on one origin.
+- **Deployed** to Azure Container Apps (scale-to-zero) via `azd` + Bicep, live at
+  https://webiq.isainative.dev.
+
+## Conventions
+
+- 2-space indent, single quotes, semicolons, trailing commas (Prettier + ESLint configured).
+- `server/` is CommonJS — author normal `import` TS that compiles to CJS; **no top-level await**.
+- `web/` is ESM — Vite/Tailwind/PostCSS configs use `export default`.
+- The HTTP contract lives in `server/src/contract.ts` and is **mirrored verbatim** in
+  `web/src/types/meta.ts`. Change both together.
+- Add a Web IQ endpoint = **one descriptor file** in `server/src/endpoints/` + register it
+  in `registry.ts`. The UI adapts automatically (see [architecture.md](../docs/architecture.md)).
+- Verify before claiming done: `npm run typecheck`, `npm run lint`, `npm run build`. The
+  big bugs below were **not** caught by typecheck/build — only by running the app.
+
+## On-demand documentation (read when relevant)
+
+- [docs/architecture.md](../docs/architecture.md) — full solution architecture + extensibility model.
+- [docs/webiq-sdk.md](../docs/webiq-sdk.md) — `@microsoft/webiq` reference (endpoints, enums, errors, telemetry).
+- [docs/deployment.md](../docs/deployment.md) — Azure Container Apps deploy, resource names, cost model, azd env.
+- [docs/custom-domain.md](../docs/custom-domain.md) — Cloudflare → Container Apps custom domain + managed cert.
+
+---
+
+# ⚠️ Gotchas & hard-won lessons
+
+Each entry is **symptom → cause → fix**. These are the things that previously caused the most debugging.
+
+## A. App / Node
+
+### A1. Every request aborts with "Client disconnected" (~80ms)
+- **Symptom:** all `/api/search/*` calls fail instantly with `{ class:'Error', message:'Client disconnected' }`; telemetry shows ~86 ms, 1 attempt. Typecheck/build pass.
+- **Cause:** the abort handler listened on the **`req`** `'close'` event, which fires as soon as the request **body** is fully read — long before the response is sent — so it aborts the in-flight SDK call.
+- **Fix:** listen on the **`res`** `'close'` event and only abort if `!res.writableFinished`. See `server/src/routes/search.ts` (`requestAbortSignal(res)`).
+- **Lesson:** for request-cancellation in Express, key off the **response** lifecycle, not the request stream. And **always run the app** — this class of bug is invisible to the compiler.
+
+### A2. Malformed JSON body returns 500 instead of 400
+- **Fix:** in the error mapper, honor an `err.status`/`err.statusCode` (express.json throws a 400-tagged `SyntaxError`). See `server/src/middleware/errorHandler.ts`.
+
+### A3. Static files vs SPA fallback ordering
+- **Symptom:** `/robots.txt`, `/og-image.png`, `/sitemap.xml` return the SPA `index.html`.
+- **Fix:** mount `express.static(webDist)` **before** the `app.get('*')` SPA fallback. Already correct in `server/src/index.ts`.
+
+## B. `@microsoft/webiq` SDK
+
+### B1. Enum typing
+- The SDK enum **values are plain strings** (`ContentFormat.HTML === 'html'`), so the value string works at runtime, but TypeScript wants the enum type. Resolve incoming strings via a helper and cast options to the SDK type or `any`. Pattern: `buildSdkOptions` + `resolveEnumValue` in `server/src/endpoints/types.ts` / `webiqClient.ts`.
+- `freshness` and `liveCrawl` are **plain strings**, not enums — model them as `type:'enum'` **without** `enumImport`.
+- Full enum tables + endpoint options: [docs/webiq-sdk.md](../docs/webiq-sdk.md).
+
+### B2. Auth is enforced
+- A bad/empty key returns **401 `AuthenticationError`** — the API really validates it. Useful for testing the error path; don't assume "preview = no auth".
+
+### B3. Rate limits are never auto-retried
+- `RateLimitError` (429/430) exposes `.retryAfter` (string like `"60s"`) from the response **body**. Surface it; do not loop.
+
+## C. azd authentication (MSA / personal accounts)
+
+### C1. Subscription "not found" even though it exists
+- **Symptom:** `azd provision` fails: `failed to resolve user 'live.com#...@gmail.com' access to subscription <id>`.
+- **Cause:** the subscription lived in a **different tenant** than azd's home tenant. For MSA/personal accounts, azd defaults to the wrong tenant.
+- **Fix:** find the right tenant, then re-auth pinned to it and persist it:
+  ```bash
+  azd auth login --tenant-id <tenant-id> --use-device-code
+  azd env set AZURE_TENANT_ID <tenant-id>
+  ```
+- **How to discover tenants/subscriptions when `az` is a different identity:** get an ARM token from azd and query ARM REST:
+  ```powershell
+  $tok = (azd auth token --tenant-id <tid> --output json | ConvertFrom-Json).token
+  Invoke-RestMethod -Headers @{Authorization="Bearer $tok"} -Uri "https://management.azure.com/tenants?api-version=2022-12-01"
+  Invoke-RestMethod -Headers @{Authorization="Bearer $tok"} -Uri "https://management.azure.com/subscriptions?api-version=2022-12-01"
+  ```
+
+### C2. Refresh token expired (90 days)
+- `AADSTS700082: The refresh token has expired due to inactivity` → just `azd auth login` (interactive/device-code). All offline prep (Bicep build, docker build, `azd package`) needs **no** auth, so do that first and only block on the one interactive step.
+
+### C3. `azd auth token` panics / returns error JSON
+- v1.23.0 can panic: `failed to resolve console for unknown flags error:unsupported format 'none'`. Capture raw output and parse defensively.
+- `azd auth token --output json` returns an **error JSON** (not a token) when the env's `AZURE_SUBSCRIPTION_ID` is set to an inaccessible sub. Temporarily clear it to enumerate access.
+
+## D. Azure Container Apps + ACR (the big one)
+
+### D1. Image pull fails with `UNAUTHORIZED` after `azd deploy`
+- **Symptom:** `RESPONSE 200 ... ContainerAppOperationError ... UNAUTHORIZED: authentication required` pulling `cr....azurecr.io/...`.
+- **Cause:** the Container App had **no `registries` block** linking its managed identity to ACR. The AcrPull role alone is not enough — the app must be told to authenticate to ACR via `identity: system`.
+- **Fix (Bicep):** add to `properties.configuration`:
+  ```bicep
+  registries: [
+    { server: containerRegistry.properties.loginServer, identity: 'system' }
+  ]
+  ```
+  Safe to declare at create time because the **initial image is the public placeholder** (`mcr.microsoft.com/azuredocs/containerapps-helloworld:latest`) — ACR auth is only exercised when the real image is deployed, by which point AcrPull exists. The AcrPull role assignment stays in a **separate module** (`acr-pull-role.bicep`) to avoid a circular dependency.
+
+### D2. Two-phase deploy for Container Apps + ACR + managed identity
+- Run **`azd provision` then `azd deploy` as separate steps** (not `azd up`), and confirm the **AcrPull** role has propagated between them (RBAC propagation can take minutes; a missing role causes a ~900 s revision timeout).
+
+### D3. `azd package` fails: "must specify language or image"
+- azd 1.23 requires a **`language`** field in `azure.yaml` **even with** a `docker:` block. Add `language: ts`.
+
+## E. Custom domain + managed certificate (Container Apps)
+
+> Full guide: [docs/custom-domain.md](../docs/custom-domain.md). Key traps below.
+
+### E1. Cert creation requires the hostname first (`RequireCustomHostnameInEnvironment`)
+- You **cannot** create the managed cert and an `SniEnabled` binding in one pass. Order is **(1) bind hostname `bindingType: Disabled` → (2) create managed cert (CNAME-validated) → (3) switch binding to `SniEnabled` with the cert id**. The Bicep encodes this via the `bindCertificate` param (azd `WEBIQ_BIND_CERT`: phase 1 `false`, phase 2 `true`).
+
+### E2. Managed cert stuck in `Pending` forever (no error)
+- **Cause:** the Container App's `provisioningState` is `Failed` — Azure won't validate a cert for a hostname on a Failed app. The cert just sits `Pending` for 20+ min.
+- **Fix:** return the app to `Succeeded` (see F2), then **delete and recreate** the cert. With a healthy app, CNAME validation completes in ~3–8 min.
+
+### E3. Cloudflare proxy must be OFF during issuance
+- The CNAME must be **grey-cloud (DNS only)** while the cert issues — Cloudflare's proxy hides the CNAME and breaks validation. Verify it resolves directly to the env IP (`68.220.145.84`), not a Cloudflare edge IP. Switch to orange + SSL **Full (strict)** only **after** issuance.
+
+## F. Editing a live Container App via ARM REST (GET → PUT)
+
+When `az` CLI is signed into a different identity, you may patch the app directly through
+ARM REST with azd's token. Three traps, all learned the hard way:
+
+### F1. Secrets come back empty → `ContainerAppSecretInvalid`
+- A GET does **not** return secret **values** (write-only). PUTting the response back sends an empty secret → 400 `ContainerAppSecretInvalid`.
+- **Fix:** re-supply the secret value in the PUT body (read it from `azd env get-value WEBIQ_API_KEY`).
+
+### F2. Echoing read-only fields → app stuck `provisioningState: Failed`
+- A full GET→PUT that includes **computed/read-only** fields (`latestRevisionFqdn`, `outboundIpAddresses`, etc.) makes the reconcile fail; the app sticks in `Failed` (revision still serves, but cert issuance stalls — see E2).
+- **Fix:** PUT a **clean body with only writable fields**: `location`, `identity`, `tags`, and `properties.{environmentId, configuration{activeRevisionsMode, ingress, registries, secrets}, template{containers, scale}}`.
+
+### F3. Dropping `tags` breaks `azd deploy`
+- If your clean PUT omits `tags`, the `azd-service-name: app` tag is lost and the next `azd deploy` fails: *"unable to find a resource tagged with 'azd-service-name: app'"*.
+- **Fix:** always include `tags: { 'azd-env-name': 'webiq-demo', 'azd-service-name': 'app' }` in the PUT.
+
+## G. Tooling & environment (Windows / PowerShell)
+
+### G1. `curl.exe` POST bodies get mangled by PowerShell quoting
+- Inline `-d '{"k":"v"}'` is corrupted. **Write the JSON to a file and use `--data "@body.json"`**.
+
+### G2. Long-running `azd` commands lose the shell handle
+- Sync shells sometimes complete just after the read window closes, dropping output. For `azd provision`/`deploy`, run as a **detached process logging to a file** and poll the file:
+  ```powershell
+  $p = Start-Process azd -ArgumentList 'provision','--no-prompt' -RedirectStandardOutput out.log -RedirectStandardError err.log -PassThru -WindowStyle Hidden
+  # then poll out.log and Get-Process -Id $p.Id
+  ```
+
+### G3. SVG → PNG (favicons, OG image)
+- No converter is preinstalled. Install `sharp` as a temporary dev dep, generate PNG/ICO, then **uninstall it** to keep the Docker build lean (commit the rendered PNGs; keep the SVG sources). `sharp` can't write `.ico` — assemble the ICO container manually from PNG buffers.
+
+## H. Secrets & git hygiene
+
+- `.env` (real `WEBIQ_API_KEY`) is **gitignored**; azd auto-creates `.azure/.gitignore` that ignores the whole `.azure/` folder (incl. its env secret file).
+- **Before every commit**, scan staged files for the key value (read it from `.env`, `String.Contains` over each staged file). Confirm 0 hits. The verification ID for the custom domain is a **public** ownership token — safe to commit; the API key is not.
+- The repo is **public** on GitHub (`webmaxru/webiq-demo`). Never commit `.env`, `.azure/`, or any real key.
