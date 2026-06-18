@@ -5,6 +5,7 @@ import { EndpointSidebar } from './components/EndpointSidebar';
 import { ErrorBanner } from './components/ErrorBanner';
 import { Header } from './components/Header';
 import { compactParams, defaultParams, ParameterForm } from './components/ParameterForm';
+import { Footer } from './components/Footer';
 import { OutputTabs } from './components/OutputTabs';
 import { RunBar } from './components/RunBar';
 import type { EndpointMeta, MetaResponse, SearchFailure, SearchResponse } from './types/meta';
@@ -149,9 +150,9 @@ export default function App() {
   const telemetry = response?.ok ? response.telemetry : response?.telemetry;
 
   return (
-    <div className="min-h-screen">
+    <div className="flex min-h-screen flex-col">
       <Header />
-      <main className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[18rem_minmax(0,1fr)] lg:px-8">
+      <main className="mx-auto grid w-full max-w-7xl flex-1 gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[18rem_minmax(0,1fr)] lg:px-8">
         <div>
           {meta ? (
             <EndpointSidebar endpoints={meta.endpoints} onSelect={applyEndpoint} selectedId={selectedId} />
@@ -211,6 +212,7 @@ export default function App() {
           ) : null}
         </div>
       </main>
+      <Footer />
     </div>
   );
 }
