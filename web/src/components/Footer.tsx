@@ -28,6 +28,13 @@ export function Footer() {
           </a>
         </p>
       </div>
+      <div className="mx-auto max-w-7xl px-4 pb-5 text-center text-xs text-ink-400 sm:px-6 lg:px-8">
+        No cookies. Requests are logged anonymously (no query text) for usage statistics —{' '}
+        <a className="font-semibold text-brand-600 hover:underline" href="/privacy">
+          Privacy &amp; opt-out
+        </a>
+        .
+      </div>
     </footer>
   );
 }

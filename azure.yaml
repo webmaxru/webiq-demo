@@ -14,3 +14,6 @@ services:
     docker:
       path: ./Dockerfile
       context: .
+      # Build the image on ACR (ACR Tasks) instead of a local Docker daemon —
+      # enables headless provision/deploy without Docker Desktop running.
+      remoteBuild: true
