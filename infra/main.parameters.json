@@ -10,6 +10,9 @@
     },
     "webiqApiKey": {
       "value": "${WEBIQ_API_KEY}"
+    },
+    "customDomain": {
+      "value": "${WEBIQ_CUSTOM_DOMAIN}"
     }
   }
 }

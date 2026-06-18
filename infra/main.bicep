@@ -13,6 +13,9 @@ param location string
 @description('Web IQ API key. Supplied by azd from the WEBIQ_API_KEY environment variable; stored as a Container App secret.')
 param webiqApiKey string
 
+@description('Optional custom domain to bind (e.g. webiq.example.com). Supplied by azd from WEBIQ_CUSTOM_DOMAIN. Requires DNS records (CNAME + asuid TXT) to exist before provisioning.')
+param customDomain string = ''
+
 var tags = {
   'azd-env-name': environmentName
 }
@@ -32,6 +35,7 @@ module resources './modules/resources.bicep' = {
     tags: tags
     environmentName: environmentName
     webiqApiKey: webiqApiKey
+    customDomain: customDomain
   }
 }
 
@@ -53,3 +57,4 @@ output AZURE_LOG_ANALYTICS_WORKSPACE_ID string = resources.outputs.logAnalyticsW
 output SERVICE_APP_NAME string = resources.outputs.containerAppName
 output SERVICE_APP_URI string = resources.outputs.containerAppUri
 output WEBIQ_APP_URL string = resources.outputs.containerAppUri
+output WEBIQ_CUSTOM_DOMAIN_URL string = resources.outputs.customDomainUrl

@@ -30,11 +30,15 @@ param minReplicas int = 0
 @description('Maximum replicas under load.')
 param maxReplicas int = 3
 
+@description('Optional custom domain bound to the app (e.g. app.example.com). Leave empty to skip. Requires a CNAME to the app FQDN + an asuid TXT record in DNS BEFORE provisioning, so the managed certificate can be issued.')
+param customDomain string = ''
+
 var resourceSuffix = take(uniqueString(subscription().id, environmentName, location), 6)
 var logAnalyticsName = take('log-${environmentName}-${resourceSuffix}', 63)
 var containerRegistryName = take(toLower(replace('cr${environmentName}${resourceSuffix}', '-', '')), 50)
 var containerEnvName = take('cae-${environmentName}-${resourceSuffix}', 32)
 var containerAppName = take('ca-${environmentName}-${resourceSuffix}', 32)
+var managedCertName = empty(customDomain) ? '' : take('mc-${replace(replace(customDomain, '.', '-'), '*', 'wild')}', 32)
 
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   name: logAnalyticsName
@@ -80,7 +84,20 @@ resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
   }
 }
 
-// No `registries` block here on purpose: azd deploy runs
+// Free Azure-managed TLS certificate for the custom domain. Issued via CNAME
+// domain-control validation, so the CNAME + asuid TXT records must exist in DNS
+// before this is provisioned. Only created when a custom domain is supplied.
+resource managedCertificate 'Microsoft.App/managedEnvironments/managedCertificates@2024-03-01' = if (!empty(customDomain)) {
+  parent: containerEnv
+  name: managedCertName
+  location: location
+  tags: tags
+  properties: {
+    subjectName: customDomain
+    domainControlValidation: 'CNAME'
+  }
+}
+
 // Registry/identity link: the app authenticates to ACR with its system-assigned
 // identity (AcrPull granted in acr-pull-role.bicep). Safe to declare at create time
 // because the initial image is the PUBLIC placeholder (mcr.microsoft.com) — ACR auth
@@ -101,6 +118,13 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
         targetPort: targetPort
         transport: 'auto'
         allowInsecure: false
+        customDomains: empty(customDomain) ? null : [
+          {
+            name: customDomain
+            bindingType: 'SniEnabled'
+            certificateId: managedCertificate.id
+          }
+        ]
       }
       registries: [
         {
@@ -186,3 +210,4 @@ output containerAppName string = containerApp.name
 output containerAppPrincipalId string = containerApp.identity.principalId
 output containerAppUri string = 'https://${containerApp.properties.configuration.ingress.fqdn}'
 output logAnalyticsWorkspaceId string = logAnalytics.id
+output customDomainUrl string = empty(customDomain) ? '' : 'https://${customDomain}'

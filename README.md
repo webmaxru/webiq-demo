@@ -154,6 +154,14 @@ changes with `azd deploy`; tear everything down with `azd down`.
 - [`Dockerfile`](./Dockerfile) — multi-stage build → one image serving API + SPA.
 - [`infra/`](./infra) — Bicep: Container Apps env, ACR, Log Analytics, app, AcrPull role.
 
+### Custom domain
+
+To serve the app on your own domain (e.g. `webiq.example.com`) with a **free
+Azure-managed TLS certificate**, set the `WEBIQ_CUSTOM_DOMAIN` azd variable and add the
+required DNS records, then `azd provision`. A full walkthrough — including
+**Cloudflare** DNS, proxy (orange vs. grey cloud), and SSL/TLS mode guidance — is in
+[`docs/custom-domain.md`](./docs/custom-domain.md).
+
 ---
 
 ## Project structure
