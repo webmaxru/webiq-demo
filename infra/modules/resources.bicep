@@ -81,9 +81,10 @@ resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
 }
 
 // No `registries` block here on purpose: azd deploy runs
-// `az containerapp registry set --identity system` and updates the image
-// via the Azure API after provisioning. The AcrPull role (separate module)
-// authorizes the system-assigned identity to pull.
+// Registry/identity link: the app authenticates to ACR with its system-assigned
+// identity (AcrPull granted in acr-pull-role.bicep). Safe to declare at create time
+// because the initial image is the PUBLIC placeholder (mcr.microsoft.com) — ACR auth
+// is only exercised once the real image is deployed, by which time the role exists.
 resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: containerAppName
   location: location
@@ -101,6 +102,12 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
         transport: 'auto'
         allowInsecure: false
       }
+      registries: [
+        {
+          server: containerRegistry.properties.loginServer
+          identity: 'system'
+        }
+      ]
       secrets: [
         {
           name: 'webiq-api-key'
