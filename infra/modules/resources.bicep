@@ -33,6 +33,9 @@ param maxReplicas int = 3
 @description('Optional custom domain bound to the app (e.g. app.example.com). Leave empty to skip. Requires a CNAME to the app FQDN + an asuid TXT record in DNS BEFORE provisioning, so the managed certificate can be issued.')
 param customDomain string = ''
 
+@description('Two-phase managed-cert flag. Phase 1 (false): bind the hostname as Disabled so Azure will allow the managed certificate to be created. Phase 2 (true): create the managed cert and switch the binding to SniEnabled. A single pass is impossible (cert needs the hostname; an SNI binding needs the cert).')
+param bindCertificate bool = false
+
 var resourceSuffix = take(uniqueString(subscription().id, environmentName, location), 6)
 var logAnalyticsName = take('log-${environmentName}-${resourceSuffix}', 63)
 var containerRegistryName = take(toLower(replace('cr${environmentName}${resourceSuffix}', '-', '')), 50)
@@ -85,9 +88,11 @@ resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
 }
 
 // Free Azure-managed TLS certificate for the custom domain. Issued via CNAME
-// domain-control validation, so the CNAME + asuid TXT records must exist in DNS
-// before this is provisioned. Only created when a custom domain is supplied.
-resource managedCertificate 'Microsoft.App/managedEnvironments/managedCertificates@2024-03-01' = if (!empty(customDomain)) {
+// domain-control validation. Azure requires the hostname to already be bound to a
+// container app in the environment before the cert can be created, so this is only
+// created in phase 2 (bindCertificate = true). The CNAME + asuid TXT records must
+// also exist in DNS first.
+resource managedCertificate 'Microsoft.App/managedEnvironments/managedCertificates@2024-03-01' = if (!empty(customDomain) && bindCertificate) {
   parent: containerEnv
   name: managedCertName
   location: location
@@ -121,8 +126,8 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
         customDomains: empty(customDomain) ? null : [
           {
             name: customDomain
-            bindingType: 'SniEnabled'
-            certificateId: managedCertificate.id
+            bindingType: bindCertificate ? 'SniEnabled' : 'Disabled'
+            certificateId: bindCertificate ? managedCertificate.id : null
           }
         ]
       }

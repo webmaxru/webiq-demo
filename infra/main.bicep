@@ -16,6 +16,9 @@ param webiqApiKey string
 @description('Optional custom domain to bind (e.g. webiq.example.com). Supplied by azd from WEBIQ_CUSTOM_DOMAIN. Requires DNS records (CNAME + asuid TXT) to exist before provisioning.')
 param customDomain string = ''
 
+@description('Two-phase managed-cert flag (string from azd WEBIQ_BIND_CERT). "false"/empty = phase 1 (bind hostname as Disabled). "true" = phase 2 (issue cert + SniEnabled).')
+param bindCertificate string = 'false'
+
 var tags = {
   'azd-env-name': environmentName
 }
@@ -36,6 +39,7 @@ module resources './modules/resources.bicep' = {
     environmentName: environmentName
     webiqApiKey: webiqApiKey
     customDomain: customDomain
+    bindCertificate: toLower(bindCertificate) == 'true'
   }
 }
 

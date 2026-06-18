@@ -58,20 +58,43 @@ nslookup -type=TXT asuid.webiq.isainative.dev
 
 ## Step 2 — Bind the domain + issue the managed certificate (Azure)
 
-The custom domain is wired into this repo's infrastructure as code, driven by the
-`WEBIQ_CUSTOM_DOMAIN` azd environment variable. Once DNS (Step 1) is in place:
+> ⚠️ **Ordering matters (two phases).** Azure won't create the managed certificate until
+> the hostname is already bound to the app, and an `SniEnabled` binding can't be created
+> until the certificate exists. So a single pass is impossible — it's always:
+> **(1) bind hostname as `Disabled` → (2) create managed cert → (3) switch binding to `SniEnabled`.**
+
+This repo's Bicep encodes that two-phase flow via two azd variables:
+`WEBIQ_CUSTOM_DOMAIN` (the hostname) and `WEBIQ_BIND_CERT` (`false` = phase 1,
+`true` = phase 2). Once DNS (Step 1) is in place:
 
 ```bash
 azd env set WEBIQ_CUSTOM_DOMAIN webiq.isainative.dev
-azd provision     # creates the managed certificate (DNS-validated) and binds it
+
+# Phase 1 — register the hostname (binding type Disabled)
+azd env set WEBIQ_BIND_CERT false
+azd provision
+
+# Phase 2 — issue the managed cert (DNS-validated) and switch to SniEnabled
+azd env set WEBIQ_BIND_CERT true
+azd provision
+
+azd deploy        # re-push the app image (azd provision resets it to the placeholder)
 ```
 
-`azd provision` blocks until the certificate is issued and bound (typically 2–5 min).
+> ⚠️ `azd provision` re-applies the Bicep, which resets the container image to the
+> public placeholder. Always run `azd deploy` afterwards to restore the real image.
+> Certificate issuance via CNAME validation typically takes 3–8 minutes; the app keeps
+> serving on its default `*.azurecontainerapps.io` hostname throughout.
 
 <details>
-<summary>Alternative: one-shot Azure CLI (no IaC change)</summary>
+<summary>Alternative: Azure CLI one-shot (handles both phases)</summary>
 
 ```bash
+az containerapp hostname add \
+  --hostname webiq.isainative.dev \
+  --resource-group rg-webiq-demo \
+  --name ca-webiq-demo-wr3bqs
+
 az containerapp hostname bind \
   --hostname webiq.isainative.dev \
   --resource-group rg-webiq-demo \
@@ -80,8 +103,8 @@ az containerapp hostname bind \
   --validation-method CNAME
 ```
 
-> ⚠️ If you bind with the CLI instead of IaC, a later `azd provision` could drop the
-> binding unless `WEBIQ_CUSTOM_DOMAIN` is set (the Bicep is the source of truth here).
+`az containerapp hostname bind` performs the add → managed-cert → SNI-enable sequence
+for you, and does **not** reset the image (no `azd deploy` needed afterwards).
 </details>
 
 Verify it serves:
@@ -130,3 +153,4 @@ to gain Cloudflare's CDN, WAF, caching, and analytics:
 | Redirect loop after enabling proxy | Cloudflare SSL mode is *Flexible* — change to **Full (strict)**. |
 | Works on grey, breaks on orange | SSL mode not *Full (strict)*, or an old/expired edge setting — re-check SSL/TLS overview. |
 | Apex/root domain instead of a subdomain | Use an **A record** to `68.220.145.84` (or Cloudflare CNAME flattening) + the `asuid` TXT, and bind with `--validation-method TXT`/`HTTP`. |
+| Managed cert stuck in *Pending* forever (no error) | The Container App's `provisioningState` is `Failed` (often left over from an earlier failed deployment). Cert validation won't complete while the app is `Failed`. Re-apply a clean app update to return it to `Succeeded`, then recreate the cert. Avoid PUTting computed/read-only fields (e.g. `latestRevisionFqdn`, `outboundIpAddresses`) back into the app — that can re-trigger `Failed`. |

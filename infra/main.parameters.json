@@ -13,6 +13,9 @@
     },
     "customDomain": {
       "value": "${WEBIQ_CUSTOM_DOMAIN}"
+    },
+    "bindCertificate": {
+      "value": "${WEBIQ_BIND_CERT}"
     }
   }
 }
