@@ -76,6 +76,32 @@ azd deploy      # build image → push to ACR → roll the app (~40-60s)
 - **Infra change:** `azd provision` then `azd deploy`.
 - **Tear down everything:** `azd down --force --purge`.
 
+## CI/CD (GitHub Actions)
+
+Pushes to `main` deploy automatically via **`.github/workflows/deploy.yml`** — a minimal,
+two-job pipeline:
+
+| Job | Triggers | What it does |
+|-----|----------|--------------|
+| `validate` | push + PR to `main` | `npm ci` → `typecheck` → `lint` → `build` |
+| `deploy` | push to `main` + manual `workflow_dispatch` | `azd env refresh` (read-only — pull infra outputs) → `azd deploy` (build image on ACR, roll the Container App) |
+
+- **Minimal by design:** CI only ever runs a **code deploy** — it never provisions or mutates
+  infrastructure. Infra stays an out-of-band, owner-run step (`azd provision`), so the CI
+  identity is granted **Contributor only**.
+- **Secret-less auth (OIDC / federated):** `azd pipeline config` created a user-assigned
+  managed identity (`msi-webiq-demo`, in `rg-webiq-demo-msi`) with federated credentials for
+  `main` and PRs, and set the GitHub **repository variables** `AZURE_CLIENT_ID`,
+  `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_ENV_NAME`, `AZURE_LOCATION`,
+  `AZURE_RESOURCE_GROUP` (+ `WEBIQ_*`). The Web IQ key lives as the encrypted Actions secret
+  `WEBIQ_API_KEY` (used only so `azd env refresh` can resolve the template params).
+- **Doc/markdown-only** pushes are skipped (`paths-ignore`) so they never trigger a deploy.
+- **Manual run:** Actions → *Deploy to Azure* → *Run workflow*, or
+  `gh workflow run "Deploy to Azure" --ref main`.
+
+> Re-create the pipeline auth from scratch with:
+> `azd pipeline config --provider github --auth-type federated --principal-role Contributor`
+
 ## Health, logs, scaling
 
 - Health: `GET /api/health` → `{ status:'ok', keyConfigured, auth, node }`. Used by the
