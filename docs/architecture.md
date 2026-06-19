@@ -37,7 +37,8 @@ webiq-demo/
 
 | File | Responsibility |
 |------|----------------|
-| `src/index.ts` | Express bootstrap: `express.json`, CORS (dev), mount `/api`, 404 JSON, prod static serve of `web/dist` + SPA fallback. |
+| `src/index.ts` | Express bootstrap: starts App Insights first, `express.json`, CORS (dev), mount `/api`, 404 JSON, prod static serve of `web/dist` + SPA fallback, telemetry flush on SIGTERM/SIGINT. |
+| `src/appInsights.ts` | App Insights bootstrap (imported **first**). Auto-collects requests/dependencies/exceptions; helpers `trackEvent`/`trackException`/`trackMetric`, `anonIdFor`, `flushAppInsights`. No-op when no connection string. |
 | `src/env.ts` | Loads `.env` (tries several paths), exposes `{ apiKey, port, webOrigin, timeoutMs, keyConfigured, authMode }`. |
 | `src/webiqClient.ts` | Lazily constructs a singleton `WebIQClient`; holds the `SDK_ENUMS` registry + `resolveEnumValue`/`enumMemberName` helpers; `ConfigurationError`. |
 | `src/telemetry.ts` | `AsyncLocalStorage` that correlates the SDK `telemetryHook` events to the in-flight request; `runWithTelemetry`, `summarizeTelemetry`, `telemetryEventsFromError`. |
@@ -49,7 +50,7 @@ webiq-demo/
 | `src/codegen.ts` | `generateSnippet` — builds copy-paste SDK TypeScript from a descriptor + user params. |
 | `src/middleware/errorHandler.ts` | `toApiError` — maps SDK error classes → structured `{ httpStatus, info }`. |
 | `src/routes/meta.ts` | `GET /api/meta` (form schema), `GET /api/health`. |
-| `src/routes/search.ts` | `POST /api/search/:endpointId` — validate → invoke (with abort + timeout) → `{ data, telemetry, snippet }`. |
+| `src/routes/search.ts` | `POST /api/search/:endpointId` — validate → invoke (with abort + timeout) → `{ data, telemetry, snippet }`; emits the `SandboxSearch` / `SandboxRateLimited` App Insights events. |
 
 ### Request flow
 
@@ -96,6 +97,9 @@ enum name, used by codegen to render `EnumName.MEMBER`).
 | `PORT` | no | `3001` (local), `8080` (container) | Backend HTTP port. |
 | `WEB_ORIGIN` | no | `http://localhost:5173` | CORS origin in dev. |
 | `WEBIQ_TIMEOUT_MS` | no | `15000` | Per-request SDK wall-clock budget (incl. retries). |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | no | — | App Insights telemetry. A Container App secret in prod; unset ⇒ telemetry disabled. |
+| `WEBIQ_ANON_SALT` | no | built-in | Salt for the anonymous visitor id used in engagement stats. |
+| `WEBIQ_ALERT_EMAIL` | no | — | **Deploy-time (azd) only.** Recipient for the rate-limit email alert; empty ⇒ no alert created. |
 
 ## Build & run
 

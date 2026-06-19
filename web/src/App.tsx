@@ -193,6 +193,10 @@ export default function App() {
                   values={params}
                 />
                 <RunBar disabled={input.trim() === ''} loading={loading} onCancel={cancel} onRun={handleRun} telemetry={telemetry} />
+                <p className="text-xs leading-5 text-ink-500">
+                  Heads up: requests you run here are logged anonymously — the endpoint, timing,
+                  and outcome (never your query text) — for usage statistics.
+                </p>
               </section>
               {response && !response.ok ? <ErrorBanner failure={response} /> : null}
               {loading ? (

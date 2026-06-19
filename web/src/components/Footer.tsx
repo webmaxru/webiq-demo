@@ -28,6 +28,9 @@ export function Footer() {
           </a>
         </p>
       </div>
+      <div className="mx-auto max-w-7xl px-4 pb-5 text-center text-xs text-ink-400 sm:px-6 lg:px-8">
+        Requests are logged anonymously (no query text) for usage statistics.
+      </div>
     </footer>
   );
 }
