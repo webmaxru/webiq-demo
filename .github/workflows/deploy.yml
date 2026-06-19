@@ -61,6 +61,13 @@ jobs:
       AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      # Needed only so `azd env refresh` can resolve the infra template params
+      # when it reads back the deployment outputs (it does not re-provision).
+      WEBIQ_CUSTOM_DOMAIN: ${{ vars.WEBIQ_CUSTOM_DOMAIN }}
+      WEBIQ_BIND_CERT: ${{ vars.WEBIQ_BIND_CERT }}
+      WEBIQ_ALERT_EMAIL: ${{ vars.WEBIQ_ALERT_EMAIL }}
+      WEBIQ_API_KEY: ${{ secrets.WEBIQ_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - name: Install azd
@@ -71,5 +78,11 @@ jobs:
             --client-id "$AZURE_CLIENT_ID" \
             --federated-credential-provider github \
             --tenant-id "$AZURE_TENANT_ID"
+      - name: Hydrate infrastructure outputs (read-only — no re-provision)
+        # `azd deploy` needs the infra outputs (ACR endpoint, Container App name)
+        # that `azd provision` normally writes to the local environment. In CI the
+        # environment starts empty, so refresh pulls them from the already-deployed
+        # infrastructure without changing any infrastructure.
+        run: azd env refresh --no-prompt
       - name: Deploy application (build image on ACR + roll Container App)
         run: azd deploy --no-prompt
