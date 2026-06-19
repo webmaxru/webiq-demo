@@ -153,14 +153,14 @@ export default function App() {
     <div className="flex min-h-screen flex-col">
       <Header />
       <main className="mx-auto grid w-full max-w-7xl flex-1 gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[18rem_minmax(0,1fr)] lg:px-8">
-        <div>
+        <div className="min-w-0">
           {meta ? (
             <EndpointSidebar endpoints={meta.endpoints} onSelect={applyEndpoint} selectedId={selectedId} />
           ) : (
             <div className="card p-4 text-sm text-ink-500">Loading endpoints…</div>
           )}
         </div>
-        <div className="space-y-5">
+        <div className="min-w-0 space-y-5">
           {metaError ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">{metaError}</div>
           ) : null}
