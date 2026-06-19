@@ -27,11 +27,13 @@ export function OutputTabs({ endpoint, input, params, response }: OutputTabsProp
 
   return (
     <section className="card overflow-hidden">
-      <div className="flex gap-1 overflow-x-auto border-b border-ink-200 bg-ink-50 p-2">
+      <div className="flex gap-1 overflow-x-auto border-b border-ink-200 bg-ink-50 p-2 dark:border-ink-800 dark:bg-ink-950/40">
         {tabs.map((tab) => (
           <button
-            className={`rounded-xl px-3 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-brand-500 ${
-              activeTab === tab.id ? 'bg-white text-brand-700 shadow-sm' : 'text-ink-500 hover:text-ink-900'
+            className={`px-3 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-brand-500 ${
+              activeTab === tab.id
+                ? 'bg-white text-brand-700 dark:bg-ink-800 dark:text-brand-200'
+                : 'text-ink-500 hover:text-ink-900 dark:text-ink-400 dark:hover:text-ink-100'
             }`}
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
@@ -43,7 +45,7 @@ export function OutputTabs({ endpoint, input, params, response }: OutputTabsProp
       </div>
       <div className="p-4">
         {!response ? (
-          <div className="rounded-2xl border border-dashed border-ink-300 bg-white p-8 text-center text-sm text-ink-500">
+          <div className="border border-dashed border-ink-300 bg-white p-8 text-center text-sm text-ink-500 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-400">
             Run an endpoint to inspect results, raw payloads, generated code, and telemetry.
           </div>
         ) : null}

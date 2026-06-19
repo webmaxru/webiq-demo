@@ -23,6 +23,9 @@ so an **idle app consumes ~$0** of compute.
 | Container Apps Env | `cae-webiq-demo-wr3bqs` | **Consumption** (no idle base cost) |
 | Container Registry | `crwebiqdemowr3bqs` | **Basic** |
 | Log Analytics | `log-webiq-demo-wr3bqs` | 30-day retention |
+| Application Insights | `appi-webiq-demo-wr3bqs` | workspace-based (shares the Log Analytics workspace) |
+| Workbook | `Web IQ — User Engagement` | engagement dashboard, bound to App Insights |
+| Action group + alert | `ag-/alert-webiq-demo-ratelimit` | only when `WEBIQ_ALERT_EMAIL` is set |
 | Managed certificate | `mc-webiq-isainative-dev` | free, on the env, for the custom domain |
 
 ## Cost model (why idle ≈ $0)
@@ -54,6 +57,7 @@ azd env set AZURE_LOCATION        eastus2
 azd env set WEBIQ_API_KEY         <key>     # becomes a Container App secret
 azd env set WEBIQ_CUSTOM_DOMAIN   webiq.isainative.dev   # optional
 azd env set WEBIQ_BIND_CERT       true                    # phase 2 of custom domain
+azd env set WEBIQ_ALERT_EMAIL     you@example.com         # optional — enables the rate-limit email alert
 ```
 
 ## Deploy / redeploy
@@ -72,12 +76,68 @@ azd deploy      # build image → push to ACR → roll the app (~40-60s)
 - **Infra change:** `azd provision` then `azd deploy`.
 - **Tear down everything:** `azd down --force --purge`.
 
+## CI/CD (GitHub Actions)
+
+Pushes to `main` deploy automatically via **`.github/workflows/deploy.yml`** — a minimal,
+two-job pipeline:
+
+| Job | Triggers | What it does |
+|-----|----------|--------------|
+| `validate` | push + PR to `main` | `npm ci` → `typecheck` → `lint` → `build` |
+| `deploy` | push to `main` + manual `workflow_dispatch` | `azd env refresh` (read-only — pull infra outputs) → `azd deploy` (build image on ACR, roll the Container App) |
+
+- **Minimal by design:** CI only ever runs a **code deploy** — it never provisions or mutates
+  infrastructure. Infra stays an out-of-band, owner-run step (`azd provision`), so the CI
+  identity is granted **Contributor only**.
+- **Secret-less auth (OIDC / federated):** `azd pipeline config` created a user-assigned
+  managed identity (`msi-webiq-demo`, in `rg-webiq-demo-msi`) with federated credentials for
+  `main` and PRs, and set the GitHub **repository variables** `AZURE_CLIENT_ID`,
+  `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_ENV_NAME`, `AZURE_LOCATION`,
+  `AZURE_RESOURCE_GROUP` (+ `WEBIQ_*`). The Web IQ key lives as the encrypted Actions secret
+  `WEBIQ_API_KEY` (used only so `azd env refresh` can resolve the template params).
+- **Doc/markdown-only** pushes are skipped (`paths-ignore`) so they never trigger a deploy.
+- **Manual run:** Actions → *Deploy to Azure* → *Run workflow*, or
+  `gh workflow run "Deploy to Azure" --ref main`.
+
+> Re-create the pipeline auth from scratch with:
+> `azd pipeline config --provider github --auth-type federated --principal-role Contributor`
+
 ## Health, logs, scaling
 
 - Health: `GET /api/health` → `{ status:'ok', keyConfigured, auth, node }`. Used by the
   Container App liveness/readiness probes (`/api/health` on the target port).
 - Logs: Log Analytics (`ContainerAppConsoleLogs_CL` / `ContainerAppSystemLogs_CL`).
 - Scale: HTTP rule, `concurrentRequests: 50`, `minReplicas 0`, `maxReplicas 3`.
+
+## Monitoring & telemetry (Application Insights)
+
+The Express server is instrumented with the `applicationinsights` SDK (initialised first
+in `server/src/appInsights.ts`, before express/http load). It auto-collects requests,
+dependencies (the Web IQ SDK calls) and exceptions, and emits these custom signals:
+
+| Signal | Table | When |
+|--------|-------|------|
+| `SandboxSearch` event | `customEvents` | every "Run request" — props: `endpointId`, `outcome` (success/failure/validation_error/not_configured/unknown_endpoint), `errorClass`, `statusCode`, `anonId`; measurements: `elapsedMs`, `inputLength`, `attempts` |
+| `SandboxRateLimited` event | `customEvents` | on a 429/430 `RateLimitError` (drives the email alert) |
+| `SandboxRateLimitErrors` metric | `customMetrics` | on a 429/430 `RateLimitError` |
+| exceptions | `exceptions` | every failed run + anything reaching the error handler |
+
+Privacy: only **metadata** is logged — never the query text. Users are unique-counted by an
+anonymised `anonId` = `sha256(salt + ip + user-agent)` (no PII stored). The site uses **no
+cookies** and a public **/privacy** notice (`web/src/components/PrivacyPolicy.tsx`) documents
+the processing under GDPR. Visitors can object via a one-click opt-out, and the server also
+honours `DNT: 1` / `Sec-GPC: 1` (`analyticsOptedOut` in `appInsights.ts`): when opted out, the
+search route emits **no** `anonId` and **no** custom telemetry (`SandboxSearch` etc.).
+
+- **Engagement dashboard:** an Azure Monitor **Workbook** — "Web IQ — User Engagement" —
+  is deployed with the App Insights resource (Monitoring → Workbooks). It shows searches &
+  unique visitors over time, searches by endpoint, outcome breakdown, p50/p95 latency,
+  errors by class, rate-limit events, and top exceptions.
+- **Rate-limit email alert:** when `WEBIQ_ALERT_EMAIL` is set, a scheduled log-query alert
+  (`alert-<env>-ratelimit`) + action group (`ag-<env>-ratelimit`) email that address
+  whenever a `SandboxRateLimited` event is ingested (evaluated every 5 min). Leave the env
+  var empty to skip both. The connection string is injected as a Container App secret
+  (`APPLICATIONINSIGHTS_CONNECTION_STRING`).
 
 ## Custom domain
 

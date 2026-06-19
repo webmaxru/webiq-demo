@@ -73,6 +73,16 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Apply the persisted (or OS-preferred) theme before paint to avoid a flash.
+      (function () {
+        try {
+          var stored = window.localStorage.getItem('webiq-theme');
+          var dark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+          document.documentElement.classList.toggle('dark', dark);
+        } catch (e) {}
+      })();
+    </script>
     <noscript>
       Web IQ Sandbox is an interactive playground for Microsoft Web IQ grounding APIs (web,
       news, images, video, browse, and classic search). Please enable JavaScript to use it.

@@ -1,0 +1,88 @@
+name: Deploy to Azure
+
+# Minimal CI/CD:
+#   - validate: typecheck + lint + build (runs on PRs and pushes)
+#   - deploy:   builds the image on ACR and rolls the Container App via `azd deploy`
+#     (code-only — the "minimally required deployment"; infra is provisioned
+#     out-of-band by the owner, see docs/deployment.md). Auth is OIDC/federated,
+#     so no long-lived secrets are stored.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+  workflow_dispatch: {}
+
+# Never run two deploys against the same environment at once, and never cancel a
+# deploy that is already rolling a revision.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate (typecheck, lint, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+
+  deploy:
+    name: Deploy (azd)
+    needs: validate
+    # Only deploy on a push to main or a manual run — never on pull requests.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # required for OIDC login to Azure
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      # Needed only so `azd env refresh` can resolve the infra template params
+      # when it reads back the deployment outputs (it does not re-provision).
+      WEBIQ_CUSTOM_DOMAIN: ${{ vars.WEBIQ_CUSTOM_DOMAIN }}
+      WEBIQ_BIND_CERT: ${{ vars.WEBIQ_BIND_CERT }}
+      WEBIQ_ALERT_EMAIL: ${{ vars.WEBIQ_ALERT_EMAIL }}
+      WEBIQ_API_KEY: ${{ secrets.WEBIQ_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install azd
+        uses: Azure/setup-azd@v2
+      - name: Sign in to Azure (OIDC, federated — no secret)
+        run: |
+          azd auth login \
+            --client-id "$AZURE_CLIENT_ID" \
+            --federated-credential-provider github \
+            --tenant-id "$AZURE_TENANT_ID"
+      - name: Hydrate infrastructure outputs (read-only — no re-provision)
+        # `azd deploy` needs the infra outputs (ACR endpoint, Container App name)
+        # that `azd provision` normally writes to the local environment. In CI the
+        # environment starts empty, so refresh pulls them from the already-deployed
+        # infrastructure without changing any infrastructure.
+        run: azd env refresh --no-prompt
+      - name: Deploy application (build image on ACR + roll Container App)
+        run: azd deploy --no-prompt

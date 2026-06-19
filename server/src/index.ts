@@ -1,3 +1,5 @@
+// Must be first: starts App Insights auto-instrumentation before http/express load.
+import { flushAppInsights } from './appInsights';
 import fs from 'node:fs';
 import path from 'node:path';
 import cors from 'cors';
@@ -38,8 +40,25 @@ if (process.env.NODE_ENV === 'production') {
 
 app.use(errorHandler);
 
-app.listen(env.port, () => {
+const server = app.listen(env.port, () => {
   console.log(
     `Web IQ demo server listening on port ${env.port} (key configured: ${env.keyConfigured ? 'yes' : 'no'})`,
   );
 });
+
+// Flush telemetry on shutdown (Container Apps sends SIGTERM on revision swap /
+// scale-to-zero) so buffered events are not lost.
+let shuttingDown = false;
+async function shutdown(signal: NodeJS.Signals): Promise<void> {
+  if (shuttingDown) {
+    return;
+  }
+  shuttingDown = true;
+  console.log(`Received ${signal}, flushing telemetry and shutting down…`);
+  server.close();
+  await flushAppInsights();
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));

@@ -20,18 +20,18 @@ export function NewsResults({ data }: { data: JsonRecord }) {
         const url = asString(record.url);
 
         return (
-          <article className="rounded-2xl border border-ink-200 bg-white p-4" key={`${url ?? index}`}>
+          <article className="border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900" key={`${url ?? index}`}>
             <div className="flex gap-4">
-              {asString(thumbnail?.url) ? <img alt="" className="h-24 w-32 rounded-xl object-cover" src={asString(thumbnail?.url)} /> : null}
+              {asString(thumbnail?.url) ? <img alt="" className="h-24 w-32 object-cover" src={asString(thumbnail?.url)} /> : null}
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  {asString(record.source) ? <span className="badge bg-ink-100 text-ink-700 ring-ink-200">{asString(record.source)}</span> : null}
-                  {asString(record.lastUpdatedAt) ? <span className="text-xs text-ink-500">{formatDate(asString(record.lastUpdatedAt))}</span> : null}
+                  {asString(record.source) ? <span className="badge bg-ink-100 text-ink-700 ring-ink-200 dark:bg-ink-800 dark:text-ink-200 dark:ring-ink-700">{asString(record.source)}</span> : null}
+                  {asString(record.lastUpdatedAt) ? <span className="text-xs text-ink-500 dark:text-ink-400">{formatDate(asString(record.lastUpdatedAt))}</span> : null}
                 </div>
-                <h3 className="mt-2 font-semibold text-ink-950">
-                  {url ? <a className="hover:text-brand-600 hover:underline" href={url} rel="noreferrer" target="_blank">{asString(record.title) ?? 'News result'}</a> : asString(record.title)}
+                <h3 className="mt-2 font-semibold text-ink-950 dark:text-ink-100">
+                  {url ? <a className="hover:text-brand-600 hover:underline dark:hover:text-brand-300" href={url} rel="noreferrer" target="_blank">{asString(record.title) ?? 'News result'}</a> : asString(record.title)}
                 </h3>
-                <p className="mt-2 text-sm leading-6 text-ink-600">{asString(record.snippet) ?? asString(record.content)}</p>
+                <p className="mt-2 text-sm leading-6 text-ink-600 dark:text-ink-400">{asString(record.snippet) ?? asString(record.content)}</p>
               </div>
             </div>
           </article>

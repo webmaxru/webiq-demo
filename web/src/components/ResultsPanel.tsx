@@ -25,7 +25,7 @@ export function ResultsPanel({ endpoint, response }: ResultsPanelProps) {
 
   if (!isRecord(data)) {
     return (
-      <pre className="max-h-96 overflow-auto rounded-2xl bg-ink-950 p-4 text-xs text-ink-100">
+      <pre className="max-h-96 overflow-auto bg-ink-950 p-4 text-xs text-ink-100">
         <code>{JSON.stringify(data, null, 2)}</code>
       </pre>
     );
@@ -60,7 +60,7 @@ export function ResultsPanel({ endpoint, response }: ResultsPanelProps) {
   }
 
   return (
-    <pre className="max-h-96 overflow-auto rounded-2xl bg-ink-950 p-4 text-xs text-ink-100">
+    <pre className="max-h-96 overflow-auto bg-ink-950 p-4 text-xs text-ink-100">
       <code>{JSON.stringify(data, null, 2)}</code>
     </pre>
   );
