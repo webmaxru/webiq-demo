@@ -6,9 +6,10 @@ interface RunBarProps {
   telemetry?: TelemetryInfo;
   onRun: () => void;
   onCancel: () => void;
+  showTelemetry?: boolean;
 }
 
-export function RunBar({ loading, disabled, telemetry, onRun, onCancel }: RunBarProps) {
+export function RunBar({ loading, disabled, telemetry, onRun, onCancel, showTelemetry = true }: RunBarProps) {
   return (
     <div className="flex flex-wrap items-center gap-3">
       <button className="btn-primary min-w-36" disabled={disabled || loading} onClick={onRun} type="button">
@@ -26,7 +27,7 @@ export function RunBar({ loading, disabled, telemetry, onRun, onCancel }: RunBar
           Cancel
         </button>
       ) : null}
-      {telemetry ? (
+      {showTelemetry && telemetry ? (
         <span className="badge bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-500/15 dark:text-blue-200 dark:ring-blue-500/40">{telemetry.elapsedMs} ms</span>
       ) : null}
     </div>

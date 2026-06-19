@@ -198,6 +198,7 @@ export default function App() {
                     value={input}
                   />
                 </label>
+                <RunBar disabled={input.trim() === ''} loading={loading} onCancel={cancel} onRun={handleRun} showTelemetry={false} telemetry={telemetry} />
                 <ParameterForm
                   onChange={updateParam}
                   onReset={() => setParams(defaultParams(selectedEndpoint.params))}
