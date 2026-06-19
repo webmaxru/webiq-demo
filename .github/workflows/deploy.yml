@@ -66,7 +66,6 @@ jobs:
       # when it reads back the deployment outputs (it does not re-provision).
       WEBIQ_CUSTOM_DOMAIN: ${{ vars.WEBIQ_CUSTOM_DOMAIN }}
       WEBIQ_BIND_CERT: ${{ vars.WEBIQ_BIND_CERT }}
-      WEBIQ_ALERT_EMAIL: ${{ vars.WEBIQ_ALERT_EMAIL }}
       WEBIQ_API_KEY: ${{ secrets.WEBIQ_API_KEY }}
     steps:
       - uses: actions/checkout@v4

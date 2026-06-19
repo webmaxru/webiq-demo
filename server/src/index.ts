@@ -4,15 +4,40 @@ import fs from 'node:fs';
 import path from 'node:path';
 import cors from 'cors';
 import express from 'express';
+import helmet from 'helmet';
 import { env } from './env';
 import { errorHandler } from './middleware/errorHandler';
+import { generalRateLimiter, searchRateLimiter } from './middleware/rateLimit';
 import { metaRouter } from './routes/meta';
 import { searchRouter } from './routes/search';
 
 const app = express();
 
+// Behind the Container Apps (Envoy) ingress the real client IP arrives in
+// X-Forwarded-For. Trust a bounded number of hops so req.ip — and therefore the
+// per-IP rate limiter — keys off the actual client rather than the proxy.
+app.set('trust proxy', env.trustProxyHops);
+
+// Security headers. CSP is left at helmet's strict defaults except img-src, which
+// is widened to https: because the SPA renders external result thumbnails
+// (news/image/video) served from third-party CDNs.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        'img-src': ["'self'", 'data:', 'https:'],
+      },
+    },
+  }),
+);
+
 app.use(express.json({ limit: '1mb' }));
 app.use(cors({ origin: env.webOrigin, credentials: false }));
+
+// Per-IP throttling: a strict limiter on the expensive search endpoints plus a
+// looser limiter across the rest of the API (health is skipped inside it).
+app.use('/api/search', searchRateLimiter);
+app.use('/api', generalRateLimiter);
 
 app.use('/api', metaRouter);
 app.use('/api', searchRouter);

@@ -25,7 +25,7 @@ so an **idle app consumes ~$0** of compute.
 | Log Analytics | `log-webiq-demo-wr3bqs` | 30-day retention |
 | Application Insights | `appi-webiq-demo-wr3bqs` | workspace-based (shares the Log Analytics workspace) |
 | Workbook | `Web IQ — User Engagement` | engagement dashboard, bound to App Insights |
-| Action group + alert | `ag-/alert-webiq-demo-ratelimit` | only when `WEBIQ_ALERT_EMAIL` is set |
+| Action group + alert | `ag-/alert-webiq-demo-abuse` | abuse alert → notifies the subscription **Owner** role (always provisioned) |
 | Managed certificate | `mc-webiq-isainative-dev` | free, on the env, for the custom domain |
 
 ## Cost model (why idle ≈ $0)
@@ -44,7 +44,7 @@ Trade-off: scale-to-zero adds a brief **cold start** on the first request after 
 | File | Purpose |
 |------|---------|
 | `main.bicep` | Subscription-scoped entry: RG + `resources` module + `acr-pull-role` module. Params: `environmentName`, `location`, `webiqApiKey` (secure), `customDomain`, `bindCertificate`. |
-| `modules/resources.bicep` | Log Analytics, ACR, Container Apps env, the Container App, optional managed cert. |
+| `modules/resources.bicep` | Log Analytics, App Insights + engagement workbook, ACR, Container Apps env, the Container App, optional managed cert, and the abuse alert (action group → Owner role + scheduled query rule). |
 | `modules/acr-pull-role.bicep` | `AcrPull` role for the app's system identity, scoped to ACR (separate module → no circular dependency). |
 | `main.parameters.json` | ARM-JSON params with `${AZURE_ENV_NAME}` / `${WEBIQ_API_KEY}` / `${WEBIQ_CUSTOM_DOMAIN}` / `${WEBIQ_BIND_CERT}` placeholders azd substitutes. |
 
@@ -57,8 +57,10 @@ azd env set AZURE_LOCATION        eastus2
 azd env set WEBIQ_API_KEY         <key>     # becomes a Container App secret
 azd env set WEBIQ_CUSTOM_DOMAIN   webiq.isainative.dev   # optional
 azd env set WEBIQ_BIND_CERT       true                    # phase 2 of custom domain
-azd env set WEBIQ_ALERT_EMAIL     you@example.com         # optional — enables the rate-limit email alert
 ```
+
+> The abuse alert needs no env var — it is always provisioned and notifies the subscription
+> **Owner** role. See [abuse-protection.md](./abuse-protection.md).
 
 ## Deploy / redeploy
 
@@ -117,8 +119,9 @@ dependencies (the Web IQ SDK calls) and exceptions, and emits these custom signa
 
 | Signal | Table | When |
 |--------|-------|------|
-| `SandboxSearch` event | `customEvents` | every "Run request" — props: `endpointId`, `outcome` (success/failure/validation_error/not_configured/unknown_endpoint), `errorClass`, `statusCode`, `anonId`; measurements: `elapsedMs`, `inputLength`, `attempts` |
-| `SandboxRateLimited` event | `customEvents` | on a 429/430 `RateLimitError` (drives the email alert) |
+| `SandboxSearch` event | `customEvents` | every "Run request" — props: `endpointId`, `outcome` (success/failure/validation_error/input_too_long/not_configured/unknown_endpoint), `errorClass`, `statusCode`, `anonId`; measurements: `elapsedMs`, `inputLength`, `attempts` |
+| `SandboxRateLimited` event | `customEvents` | on an upstream 429/430 `RateLimitError` **or** a per-IP gateway rate-limit hit (`source: 'gateway'`) — drives the abuse alert |
+| `SandboxAbuse` event | `customEvents` | on oversized input (`input_too_long`) or body (`payload_too_large`) — drives the abuse alert |
 | `SandboxRateLimitErrors` metric | `customMetrics` | on a 429/430 `RateLimitError` |
 | exceptions | `exceptions` | every failed run + anything reaching the error handler |
 
@@ -127,17 +130,21 @@ anonymised `anonId` = `sha256(salt + ip + user-agent)` (no PII stored). The site
 cookies** and a public **/privacy** notice (`web/src/components/PrivacyPolicy.tsx`) documents
 the processing under GDPR. Visitors can object via a one-click opt-out, and the server also
 honours `DNT: 1` / `Sec-GPC: 1` (`analyticsOptedOut` in `appInsights.ts`): when opted out, the
-search route emits **no** `anonId` and **no** custom telemetry (`SandboxSearch` etc.).
+search route emits **no** `anonId` and **no** analytics telemetry (`SandboxSearch` etc.).
+Security signals (`SandboxRateLimited` / `SandboxAbuse`) are recorded regardless of opt-out
+and include the raw IP so an operator can act on abuse.
 
 - **Engagement dashboard:** an Azure Monitor **Workbook** — "Web IQ — User Engagement" —
   is deployed with the App Insights resource (Monitoring → Workbooks). It shows searches &
   unique visitors over time, searches by endpoint, outcome breakdown, p50/p95 latency,
   errors by class, rate-limit events, and top exceptions.
-- **Rate-limit email alert:** when `WEBIQ_ALERT_EMAIL` is set, a scheduled log-query alert
-  (`alert-<env>-ratelimit`) + action group (`ag-<env>-ratelimit`) email that address
-  whenever a `SandboxRateLimited` event is ingested (evaluated every 5 min). Leave the env
-  var empty to skip both. The connection string is injected as a Container App secret
-  (`APPLICATIONINSIGHTS_CONNECTION_STRING`).
+- **Abuse alert (no config):** a scheduled log-query alert (`alert-<env>-abuse`) + action
+  group (`ag-<env>-abuse`) fire on any `SandboxRateLimited` / `SandboxAbuse` event (evaluated
+  every 5 min). The action group uses an **ARM-role receiver** targeting the subscription
+  **Owner** role, so Azure notifies the email registered on the owning account — no custom
+  address is stored. The connection string is injected as a Container App secret
+  (`APPLICATIONINSIGHTS_CONNECTION_STRING`). Full details:
+  [abuse-protection.md](./abuse-protection.md).
 
 ## Custom domain
 

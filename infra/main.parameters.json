@@ -16,9 +16,6 @@
     },
     "bindCertificate": {
       "value": "${WEBIQ_BIND_CERT}"
-    },
-    "alertEmailAddress": {
-      "value": "${WEBIQ_ALERT_EMAIL}"
     }
   }
 }

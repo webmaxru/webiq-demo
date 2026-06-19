@@ -19,9 +19,6 @@ param customDomain string = ''
 @description('Two-phase managed-cert flag (string from azd WEBIQ_BIND_CERT). "false"/empty = phase 1 (bind hostname as Disabled). "true" = phase 2 (issue cert + SniEnabled).')
 param bindCertificate string = 'false'
 
-@description('Optional email address for the rate-limit alert. Supplied by azd from WEBIQ_ALERT_EMAIL. When empty, no action group or alert rule is created.')
-param alertEmailAddress string = ''
-
 var tags = {
   'azd-env-name': environmentName
 }
@@ -43,7 +40,6 @@ module resources './modules/resources.bicep' = {
     webiqApiKey: webiqApiKey
     customDomain: customDomain
     bindCertificate: toLower(bindCertificate) == 'true'
-    alertEmailAddress: alertEmailAddress
   }
 }
 
@@ -67,4 +63,5 @@ output SERVICE_APP_URI string = resources.outputs.containerAppUri
 output WEBIQ_APP_URL string = resources.outputs.containerAppUri
 output WEBIQ_CUSTOM_DOMAIN_URL string = resources.outputs.customDomainUrl
 output WEBIQ_APPLICATIONINSIGHTS_NAME string = resources.outputs.applicationInsightsName
-output WEBIQ_RATE_LIMIT_ALERT_ENABLED bool = resources.outputs.rateLimitAlertEnabled
+output WEBIQ_ABUSE_ALERT_NAME string = resources.outputs.abuseAlertName
+output WEBIQ_ABUSE_ACTION_GROUP string = resources.outputs.abuseActionGroupName

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import type { Response } from 'express';
 import type { SearchFailure, SearchSuccess } from '../contract';
+import { trackAbuse } from '../abuse';
 import { analyticsOptedOut, anonIdFor, trackEvent, trackException, trackMetric } from '../appInsights';
 import { generateSnippet } from '../codegen';
 import { getDescriptor } from '../endpoints/registry';
@@ -78,6 +79,28 @@ searchRouter.post('/search/:endpointId', async (req, res) => {
   }
 
   const body = (req.body ?? {}) as SearchBody;
+
+  // Hard input-length cap, checked before validation so oversized payloads are
+  // rejected cheaply and recorded as an abuse signal (security telemetry, emitted
+  // regardless of analytics opt-out).
+  const rawInput = typeof body.input === 'string' ? body.input : '';
+  if (rawInput.length > env.maxInputLength) {
+    trackAbuse('input_too_long', req, {
+      endpointId,
+      path: req.originalUrl,
+      method: req.method,
+      limit: env.maxInputLength,
+      actual: rawInput.length,
+    });
+    emit(SEARCH_EVENT, { endpointId, outcome: 'input_too_long', anonId });
+    res.status(400).json(
+      validationFailure(endpointId, [
+        `${descriptor.inputLabel} exceeds the maximum length of ${env.maxInputLength} characters.`,
+      ]),
+    );
+    return;
+  }
+
   const validation = validateAndCoerce(descriptor, body.input, body.params ?? {});
   if ('issues' in validation) {
     emit(SEARCH_EVENT, { endpointId, outcome: 'validation_error', anonId });

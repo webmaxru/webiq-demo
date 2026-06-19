@@ -36,9 +36,6 @@ param customDomain string = ''
 @description('Two-phase managed-cert flag. Phase 1 (false): bind the hostname as Disabled so Azure will allow the managed certificate to be created. Phase 2 (true): create the managed cert and switch the binding to SniEnabled. A single pass is impossible (cert needs the hostname; an SNI binding needs the cert).')
 param bindCertificate bool = false
 
-@description('Optional email address that receives the rate-limit alert (azd WEBIQ_ALERT_EMAIL). When empty, no action group or alert rule is created.')
-param alertEmailAddress string = ''
-
 var resourceSuffix = take(uniqueString(subscription().id, environmentName, location), 6)
 var logAnalyticsName = take('log-${environmentName}-${resourceSuffix}', 63)
 var appInsightsName = take('appi-${environmentName}-${resourceSuffix}', 63)
@@ -46,7 +43,10 @@ var containerRegistryName = take(toLower(replace('cr${environmentName}${resource
 var containerEnvName = take('cae-${environmentName}-${resourceSuffix}', 32)
 var containerAppName = take('ca-${environmentName}-${resourceSuffix}', 32)
 var managedCertName = empty(customDomain) ? '' : take('mc-${replace(replace(customDomain, '.', '-'), '*', 'wild')}', 32)
-var monitoringEnabled = !empty(alertEmailAddress)
+// Built-in Owner role definition ID. The abuse alert's action group uses an
+// ARM-role receiver, so Azure notifies the email registered on each account that
+// owns the subscription — no custom address is stored in the repo.
+var ownerRoleId = '8e3af657-a8ff-443c-a75c-2fe8c4bcb635'
 
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   name: logAnalyticsName
@@ -390,34 +390,38 @@ resource engagementWorkbook 'Microsoft.Insights/workbooks@2023-06-01' = {
   }
 }
 
-// Email target for the rate-limit alert. Only created when an address is supplied.
-resource rateLimitActionGroup 'Microsoft.Insights/actionGroups@2023-09-01-preview' = if (monitoringEnabled) {
-  name: 'ag-${environmentName}-ratelimit'
+// Action group for the abuse alert. Uses an ARM-role receiver targeting the
+// subscription Owner role, so Azure notifies the email registered on the owner
+// account(s) — no custom address stored. Always provisioned.
+resource abuseActionGroup 'Microsoft.Insights/actionGroups@2023-09-01-preview' = {
+  name: 'ag-${environmentName}-abuse'
   location: 'global'
   tags: tags
   properties: {
-    groupShortName: 'webiqRL'
+    groupShortName: 'webiqAbuse'
     enabled: true
-    emailReceivers: [
+    armRoleReceivers: [
       {
-        name: 'ratelimit-email'
-        emailAddress: alertEmailAddress
+        name: 'subscription-owners'
+        roleId: ownerRoleId
         useCommonAlertSchema: true
       }
     ]
   }
 }
 
-// Log alert: fires (and emails) whenever a SandboxRateLimited event is ingested.
+// Log alert: fires whenever the gateway records abuse — a per-IP rate-limit hit
+// (SandboxRateLimited) or an oversized input/body rejection (SandboxAbuse). main
+// also emits SandboxRateLimited on upstream 429/430s, so those are covered too.
 // autoMitigate lets it resolve and re-fire on the next incident.
-resource rateLimitAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = if (monitoringEnabled) {
-  name: 'alert-${environmentName}-ratelimit'
+resource abuseAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+  name: 'alert-${environmentName}-abuse'
   location: location
   tags: tags
   kind: 'LogAlert'
   properties: {
-    displayName: 'Web IQ — rate limit hit'
-    description: 'Sends an email when the Web IQ API returns a rate-limit (429/430) error in the sandbox.'
+    displayName: 'Web IQ — abuse detected'
+    description: 'Notifies the subscription Owner role when the sandbox records abuse: per-IP rate limiting, oversized request bodies, oversized search input, or an upstream rate-limit (429/430).'
     severity: 2
     enabled: true
     scopes: [
@@ -428,7 +432,7 @@ resource rateLimitAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-previ
     criteria: {
       allOf: [
         {
-          query: 'customEvents | where name == "SandboxRateLimited"'
+          query: 'customEvents | where name in ("SandboxRateLimited", "SandboxAbuse")'
           timeAggregation: 'Count'
           operator: 'GreaterThan'
           threshold: 0
@@ -442,7 +446,7 @@ resource rateLimitAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-previ
     autoMitigate: true
     actions: {
       actionGroups: [
-        rateLimitActionGroup.id
+        abuseActionGroup.id
       ]
     }
   }
@@ -457,4 +461,5 @@ output logAnalyticsWorkspaceId string = logAnalytics.id
 output customDomainUrl string = empty(customDomain) ? '' : 'https://${customDomain}'
 output applicationInsightsName string = applicationInsights.name
 output engagementWorkbookName string = engagementWorkbook.name
-output rateLimitAlertEnabled bool = monitoringEnabled
+output abuseAlertName string = abuseAlert.name
+output abuseActionGroupName string = abuseActionGroup.name

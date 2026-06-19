@@ -1,4 +1,5 @@
 import type { EndpointDescriptor, ParamDescriptor } from './endpoints/types';
+import { env } from './env';
 
 export interface ValidationResultSuccess {
   input: string;
@@ -62,6 +63,14 @@ function validateParam(
         issues.push(`${param.name} must be a string.`);
         return undefined;
       }
+
+      if (value.length > env.maxInputLength) {
+        issues.push(
+          `${param.name} exceeds the maximum length of ${env.maxInputLength} characters.`,
+        );
+        return undefined;
+      }
+
       return value.trim();
 
     case 'number': {
@@ -131,6 +140,10 @@ export function validateAndCoerce(
 
   if (!normalizedInput) {
     issues.push(`${descriptor.inputLabel} is required.`);
+  } else if (normalizedInput.length > env.maxInputLength) {
+    issues.push(
+      `${descriptor.inputLabel} exceeds the maximum length of ${env.maxInputLength} characters.`,
+    );
   } else if (descriptor.kind === 'url') {
     try {
       const url = new URL(normalizedInput);

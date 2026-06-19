@@ -158,6 +158,10 @@ ARM REST with azd's token. Three traps, all learned the hard way:
 ### G3. SVG → PNG (favicons, OG image)
 - No converter is preinstalled. Install `sharp` as a temporary dev dep, generate PNG/ICO, then **uninstall it** to keep the Docker build lean (commit the rendered PNGs; keep the SVG sources). `sharp` can't write `.ico` — assemble the ICO container manually from PNG buffers.
 
+### G4. Reading `bicep-build` (MCP) output
+- The result is **two concatenated JSON objects** — `{…"diagnostics":[…]}` immediately followed by `{…"success":true,"template":…}` — so a naive `ConvertFrom-Json` fails with *"Additional text encountered after finished reading JSON content."* Parse by substring/regex on `"diagnostics"` / `"success"`, or grep the saved temp file (output is large, >50 KB, and is saved to a temp file).
+- To find which source line a diagnostic refers to, decode its `position`/`length` as a **character offset** into the file (`$src.Substring(position, length)`). The flagged token is often **not** the line you just edited (see J6).
+
 ## H. Secrets & git hygiene
 
 - `.env` (real `WEBIQ_API_KEY`) is **gitignored**; azd auto-creates `.azure/.gitignore` that ignores the whole `.azure/` folder (incl. its env secret file).
@@ -180,4 +184,36 @@ ARM REST with azd's token. Three traps, all learned the hard way:
 - The v3 `Telemetry` contract dropped `tagOverrides` (the type won't compile with it). To attach a per-event user/session id, put it in **`properties`** (we use `anonId`) and query `dcount(tostring(customDimensions.anonId))` — not the `user_Id` column.
 
 ### I4. Custom events drive the dashboard + alert
-- Every sandbox run emits a `SandboxSearch` custom event; a 429/430 also emits `SandboxRateLimited`. The engagement **Workbook** and the rate-limit **scheduledQueryRules** alert both query these from `customEvents`. The alert + action group are created **only when `WEBIQ_ALERT_EMAIL` is set** (conditional Bicep), so provisioning without it is fine.
+- Every sandbox run emits a `SandboxSearch` custom event; a 429/430 also emits `SandboxRateLimited`. The engagement **Workbook** and the abuse **scheduledQueryRules** alert query these from `customEvents`. The abuse alert + action group are now **always provisioned** and notify the subscription **Owner** role (see Section J) — the old `WEBIQ_ALERT_EMAIL` param has been removed.
+
+## J. Abuse protection (rate limiting, helmet, input caps) + the App-Insights merge
+
+> Full feature write-up: [docs/abuse-protection.md](../docs/abuse-protection.md). The entries below are the parts that actually cost research / trial-and-error.
+
+### J1. Reuse the existing telemetry SDK — do not add a second one
+- **Trap:** the abuse feature was first built on the **OpenTelemetry distro** (`@azure/monitor-opentelemetry` + `microsoft.custom_event.name`) on a branch cut **before** `main` integrated App Insights. `main` already ships the **classic `applicationinsights`** SDK (`server/src/appInsights.ts`, `trackEvent`/`trackException`/`trackMetric`/`clientIp`). Running both = double HTTP auto-instrumentation + two exporters.
+- **Fix / lesson:** when rebasing onto a moved `main`, **adopt the foundation already there**. Abuse events go through the existing `trackEvent`; there is **no** `instrumentation.ts` and **no** OTel deps. Before designing telemetry, `git show main:server/src/appInsights.ts` to see what already exists.
+
+### J2. Emit the event names the existing workbook/alert already query
+- `main` shipped a workbook "rate-limit" tile + a scheduled-query alert keyed on **`SandboxRateLimited`** — but no enforcement code emitting it. The per-IP limiter fills that gap: it emits `SandboxRateLimited` (with `source:'gateway'` to distinguish from main's upstream-429 use). Oversized input/body uses a separate **`SandboxAbuse`** event; the alert query is broadened to `name in ("SandboxRateLimited","SandboxAbuse")`. Match existing event names instead of inventing new ones, or the dashboards stay dark.
+
+### J3. `express-rate-limit` rejects `trust proxy = true`
+- **Symptom/constraint:** behind the Container Apps (Envoy) ingress, `req.ip` is the proxy, so a per-IP limiter buckets *all* clients together. But `app.set('trust proxy', true)` makes express-rate-limit throw `ERR_ERL_PERMISSIVE_TRUST_PROXY` — a permissive setting lets a client spoof `X-Forwarded-For` to dodge the limit.
+- **Fix:** set a **finite** hop count: `app.set('trust proxy', env.trustProxyHops)` — **1** for Container Apps, **0** for direct/local. Configurable via `TRUST_PROXY_HOPS`. (main's `clientIp()` reads `x-forwarded-for` directly, so it's correct either way.)
+
+### J4. `helmet`'s default CSP blocks external result thumbnails
+- **Symptom:** with helmet's default `img-src 'self'`, news/image/video result thumbnails (third-party CDNs) silently fail to render.
+- **Fix:** widen only `img-src` to `["'self'", 'data:', 'https:']`; keep the rest of helmet's strict defaults. Safe because the SPA's only executable script is the same-origin module bundle, and its inline `<script type="application/ld+json">` is a **non-executable data block** (unaffected by `script-src`). Verify with a grep for external `<img src>` in `web/src/components/results/*` before loosening anything else.
+
+### J5. Email alert without storing an address → action group **ARM-role receiver**
+- **Goal:** notify the operator using the email on *their Azure account*, with nothing account-specific committed (public repo).
+- **Fix:** `Microsoft.Insights/actionGroups` with an **`armRoleReceivers`** entry → built-in **Owner** role GUID `8e3af657-a8ff-443c-a75c-2fe8c4bcb635` (`useCommonAlertSchema: true`), **no `emailReceivers`, no param, no `if()` gate**. This replaced main's earlier `emailReceivers` + `WEBIQ_ALERT_EMAIL` (which required a custom address). The scheduled query rule is also unconditional now.
+
+### J6. A BCP334 warning that isn't about your new code
+- **Symptom:** `bicep build` reports one `BCP334` ("value can be length 0… minimum length 5"). Easy to assume it's a new line.
+- **Reality:** decoding the diagnostic's `position`/`length` (see G4) shows it's the **pre-existing** `containerRegistryName` (ACR names have a min length). The abuse-alert additions introduce **zero** new diagnostics. Don't `#disable-next-line` the wrong line — locate the real token first, and leave pre-existing warnings alone.
+
+### J7. The "Apply" button can't bring a stale agent branch back
+- **Symptom:** VS Code "Apply changes to the current workspace" fails with *"stage or commit your changes and try again"* even though every worktree is clean.
+- **Cause:** the agent branch had **diverged** from `main` (cut ~13 commits back, before App Insights/dark-theme/GDPR). Apply can't reconcile that automatically; the message is misleading.
+- **Fix:** ignore Apply — `git reset --hard main` the agent branch and **re-apply the work on top** (a manual rebase), reconciling the overlap, then open a PR. Keep a `backup/...` branch first so the original commits are recoverable.

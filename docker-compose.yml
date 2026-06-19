@@ -10,6 +10,15 @@ services:
       - WEBIQ_API_KEY=${WEBIQ_API_KEY:?Set WEBIQ_API_KEY in your .env file}
       - WEB_ORIGIN=http://localhost:8080
       - WEBIQ_TIMEOUT_MS=${WEBIQ_TIMEOUT_MS:-15000}
+      # Telemetry (optional; no-op when unset)
+      - APPLICATIONINSIGHTS_CONNECTION_STRING=${APPLICATIONINSIGHTS_CONNECTION_STRING:-}
+      - WEBIQ_ANON_SALT=${WEBIQ_ANON_SALT:-}
+      # Abuse protection (optional; code defaults apply when unset)
+      - WEBIQ_MAX_INPUT_LENGTH=${WEBIQ_MAX_INPUT_LENGTH:-2048}
+      - RATE_LIMIT_WINDOW_MS=${RATE_LIMIT_WINDOW_MS:-60000}
+      - RATE_LIMIT_SEARCH_MAX=${RATE_LIMIT_SEARCH_MAX:-15}
+      - RATE_LIMIT_GENERAL_MAX=${RATE_LIMIT_GENERAL_MAX:-100}
+      - TRUST_PROXY_HOPS=${TRUST_PROXY_HOPS:-1}
     expose:
       - "3001"
     ports:

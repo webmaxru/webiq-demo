@@ -39,6 +39,9 @@ The browser never sees your API key — all SDK calls run on the backend.
 - **Error / rate-limit visualization** mapping the SDK error classes
   (`AuthenticationError`, `PermissionDeniedError`, `RateLimitError`, `APIStatusError`,
   `APIConnectionError`) including `retryAfter`.
+- **Abuse protection**: per-IP rate limiting, `helmet` security headers (incl. CSP),
+  and an input-length cap — each tripped control emits a `SandboxRateLimited` / `SandboxAbuse`
+  Application Insights event, with an Azure Monitor alert to the subscription Owner role.
 
 ---
 
@@ -49,6 +52,7 @@ The browser never sees your API key — all SDK calls run on the backend.
 | [docs/architecture.md](./docs/architecture.md) | Solution architecture + extensibility model |
 | [docs/webiq-sdk.md](./docs/webiq-sdk.md) | `@microsoft/webiq` SDK reference (endpoints, enums, errors) |
 | [docs/deployment.md](./docs/deployment.md) | Azure Container Apps deploy, resources, cost model |
+| [docs/abuse-protection.md](./docs/abuse-protection.md) | Rate limiting, helmet, input caps, abuse events + alert |
 | [docs/custom-domain.md](./docs/custom-domain.md) | Cloudflare → Container Apps custom domain + TLS |
 | [.github/copilot-instructions.md](./.github/copilot-instructions.md) | Gotchas & hard-won lessons for AI agents / contributors |
 
@@ -106,6 +110,13 @@ All configuration is via environment variables (see [`.env.example`](./.env.exam
 | `PORT` | no | `3001` | Backend HTTP port. |
 | `WEB_ORIGIN` | no | `http://localhost:5173` | Allowed CORS origin (the web app). |
 | `WEBIQ_TIMEOUT_MS` | no | `15000` | Per-request SDK timeout (wall-clock budget incl. retries). |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | no | — | App Insights telemetry + abuse events. Injected automatically in Azure; unset ⇒ disabled. |
+| `WEBIQ_ANON_SALT` | no | built-in | Salt for the anonymised visitor id used in engagement stats. |
+| `WEBIQ_MAX_INPUT_LENGTH` | no | `2048` | Max characters for the search input before rejection (abuse signal). |
+| `RATE_LIMIT_WINDOW_MS` | no | `60000` | Per-IP rate-limit window (ms). |
+| `RATE_LIMIT_SEARCH_MAX` | no | `15` | Max `/api/search` requests per IP per window. |
+| `RATE_LIMIT_GENERAL_MAX` | no | `100` | Max other `/api` requests per IP per window. |
+| `TRUST_PROXY_HOPS` | no | `1` | Reverse-proxy hops to trust for client IP (Container Apps = 1, local = 0). |
 
 ---
 
@@ -265,6 +276,12 @@ adapts automatically.
 - The `WEBIQ_API_KEY` lives only on the server and is never sent to the browser.
 - CORS is restricted to `WEB_ORIGIN` in development.
 - The backend is a thin proxy — it does not persist requests or responses.
+- Abuse protection: `helmet` security headers (incl. a tuned CSP), per-IP rate
+  limiting on the API (stricter on `/api/search`), and a hard input-length cap.
+  Tripped controls are recorded as `SandboxRateLimited` / `SandboxAbuse` Application
+  Insights events and trigger an Azure Monitor alert to the subscription **Owner**
+  role (the email registered on your Azure account — no custom address configured).
+  See [docs/abuse-protection.md](./docs/abuse-protection.md).
 
 ---
 

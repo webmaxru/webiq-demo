@@ -37,28 +37,36 @@ webiq-demo/
 
 | File | Responsibility |
 |------|----------------|
-| `src/index.ts` | Express bootstrap: starts App Insights first, `express.json`, CORS (dev), mount `/api`, 404 JSON, prod static serve of `web/dist` + SPA fallback, telemetry flush on SIGTERM/SIGINT. |
-| `src/appInsights.ts` | App Insights bootstrap (imported **first**). Auto-collects requests/dependencies/exceptions; helpers `trackEvent`/`trackException`/`trackMetric`, `anonIdFor`, `flushAppInsights`. No-op when no connection string. |
-| `src/env.ts` | Loads `.env` (tries several paths), exposes `{ apiKey, port, webOrigin, timeoutMs, keyConfigured, authMode }`. |
+| `src/index.ts` | Express bootstrap: starts App Insights first, `helmet` (tuned CSP), `trust proxy`, `express.json`, CORS (dev), per-IP rate limiters, mount `/api`, 404 JSON, prod static serve of `web/dist` + SPA fallback, telemetry flush on SIGTERM/SIGINT. |
+| `src/appInsights.ts` | App Insights bootstrap (imported **first**). Auto-collects requests/dependencies/exceptions; helpers `trackEvent`/`trackException`/`trackMetric`, `clientIp`, `anonIdFor`, `flushAppInsights`. No-op when no connection string. |
+| `src/abuse.ts` | `trackAbuse(kind, req, details)` — logs to stdout + emits a `SandboxRateLimited` (rate-limit) or `SandboxAbuse` (oversized input/body) custom event via `trackEvent`. |
+| `src/env.ts` | Loads `.env` (tries several paths), exposes `{ apiKey, port, webOrigin, timeoutMs, keyConfigured, authMode, trustProxyHops, maxInputLength, rateLimit }`. |
 | `src/webiqClient.ts` | Lazily constructs a singleton `WebIQClient`; holds the `SDK_ENUMS` registry + `resolveEnumValue`/`enumMemberName` helpers; `ConfigurationError`. |
 | `src/telemetry.ts` | `AsyncLocalStorage` that correlates the SDK `telemetryHook` events to the in-flight request; `runWithTelemetry`, `summarizeTelemetry`, `telemetryEventsFromError`. |
 | `src/contract.ts` | **The HTTP contract** (`ParamMeta`, `EndpointMeta`, `MetaResponse`, `TelemetryInfo`, `SearchSuccess`/`SearchFailure`). Mirrored verbatim by the frontend. |
 | `src/endpoints/types.ts` | `EndpointDescriptor` (extends `EndpointMeta` + `invoke`), `toMeta`, `buildSdkOptions`. |
 | `src/endpoints/*.ts` | One descriptor per endpoint (web, news, videos, images, browse, classic). |
 | `src/endpoints/registry.ts` | Ordered array of all descriptors + `getDescriptor(id)`. Single source of truth. |
-| `src/validation.ts` | `validateAndCoerce` — per-descriptor range/enum/url checks and type coercion. |
+| `src/validation.ts` | `validateAndCoerce` — per-descriptor range/enum/url checks, type coercion, and input/string length caps (`maxInputLength`). |
 | `src/codegen.ts` | `generateSnippet` — builds copy-paste SDK TypeScript from a descriptor + user params. |
-| `src/middleware/errorHandler.ts` | `toApiError` — maps SDK error classes → structured `{ httpStatus, info }`. |
+| `src/middleware/rateLimit.ts` | Per-IP `express-rate-limit` limiters (strict `searchRateLimiter`, looser `generalRateLimiter`); the 429 handler records a `rate_limit` abuse event. |
+| `src/middleware/errorHandler.ts` | `toApiError` — maps SDK error classes → structured `{ httpStatus, info }`; the `errorHandler` records `payload_too_large` on 413 + tracks exceptions. |
 | `src/routes/meta.ts` | `GET /api/meta` (form schema), `GET /api/health`. |
-| `src/routes/search.ts` | `POST /api/search/:endpointId` — validate → invoke (with abort + timeout) → `{ data, telemetry, snippet }`; emits the `SandboxSearch` / `SandboxRateLimited` App Insights events. |
+| `src/routes/search.ts` | `POST /api/search/:endpointId` — input-length cap → validate → invoke (with abort + timeout) → `{ data, telemetry, snippet }`; emits the `SandboxSearch` / `SandboxRateLimited` App Insights events. |
 
 ### Request flow
 
 `UI form → POST /api/search/:id {input, params}` →
-`getDescriptor(id)` → `validateAndCoerce` → `runWithTelemetry(descriptor.invoke(client, …))`
+`helmet` + per-IP rate limiter (429 + `SandboxRateLimited` abuse event if over limit) →
+`getDescriptor(id)` → input-length cap (400 + `SandboxAbuse` event if over) → `validateAndCoerce` →
+`runWithTelemetry(descriptor.invoke(client, …))`
 with an `AbortSignal` → respond
 `{ ok:true, data, telemetry:{elapsedMs,statusCode,traceId}, snippet }`
 or, on error, `toApiError` → `{ ok:false, error:{class,statusCode,message,retryAfter,…} }`.
+
+Abuse signals (`rate_limit`, `input_too_long`, `payload_too_large`) are recorded by
+`trackAbuse` and drive the Owner-role Azure Monitor alert (see
+[abuse-protection.md](./abuse-protection.md)).
 
 ## Frontend (`web/`, ESM, React 18 + Vite 5 + Tailwind 3)
 
@@ -99,7 +107,12 @@ enum name, used by codegen to render `EnumName.MEMBER`).
 | `WEBIQ_TIMEOUT_MS` | no | `15000` | Per-request SDK wall-clock budget (incl. retries). |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | no | — | App Insights telemetry. A Container App secret in prod; unset ⇒ telemetry disabled. |
 | `WEBIQ_ANON_SALT` | no | built-in | Salt for the anonymous visitor id used in engagement stats. |
-| `WEBIQ_ALERT_EMAIL` | no | — | **Deploy-time (azd) only.** Recipient for the rate-limit email alert; empty ⇒ no alert created. |
+| `WEBIQ_MAX_INPUT_LENGTH` | no | `2048` | Max input/string-param length before rejection (abuse signal). |
+| `RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_SEARCH_MAX` / `RATE_LIMIT_GENERAL_MAX` | no | `60000` / `15` / `100` | Per-IP rate-limit window + per-window caps for `/api/search` and the rest of `/api`. |
+| `TRUST_PROXY_HOPS` | no | `1` | Reverse-proxy hops to trust for client IP (Container Apps = 1). |
+
+The abuse alert needs no env var — it is always provisioned and notifies the subscription
+Owner role (see [abuse-protection.md](./abuse-protection.md)).
 
 ## Build & run
 
@@ -112,4 +125,5 @@ enum name, used by codegen to render `EnumName.MEMBER`).
 
 - [Web IQ SDK reference](./webiq-sdk.md)
 - [Deployment & operations](./deployment.md)
+- [Abuse protection & alerting](./abuse-protection.md)
 - [Custom domain (Cloudflare)](./custom-domain.md)
