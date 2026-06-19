@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getMeta, runSearch, type ParamsMap, type ParamValue } from './api/client';
 import { ApiKeyBanner } from './components/ApiKeyBanner';
+import { AboutWebIQ } from './components/AboutWebIQ';
 import { EndpointSidebar } from './components/EndpointSidebar';
 import { ErrorBanner } from './components/ErrorBanner';
 import { Header } from './components/Header';
@@ -161,6 +162,7 @@ export default function App() {
           )}
         </div>
         <div className="space-y-5">
+          <AboutWebIQ />
           {metaError ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">{metaError}</div>
           ) : null}
