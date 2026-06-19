@@ -16,11 +16,11 @@ function Description({ text }: { text: string }) {
   const isLong = text.length > 260;
 
   return (
-    <p className="text-sm leading-6 text-ink-600">
+    <p className="text-sm leading-6 text-ink-600 dark:text-ink-400">
       {expanded || !isLong ? text : truncate(text, 260)}
       {isLong ? (
         <button
-          className="ml-2 font-semibold text-brand-600 hover:text-brand-700"
+          className="ml-2 font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-300"
           onClick={() => setExpanded((value) => !value)}
           type="button"
         >
@@ -35,12 +35,12 @@ export function GenericCards({ items, title }: { items: unknown; title?: string 
   const records = asRecords(items);
 
   if (records.length === 0) {
-    return <p className="rounded-2xl border border-dashed border-ink-300 p-6 text-center text-sm text-ink-500">No results.</p>;
+    return <p className="border border-dashed border-ink-300 p-6 text-center text-sm text-ink-500 dark:border-ink-700 dark:text-ink-400">No results.</p>;
   }
 
   return (
     <div className="space-y-3">
-      {title ? <h3 className="text-base font-semibold text-ink-900">{title}</h3> : null}
+      {title ? <h3 className="text-base font-semibold text-ink-900 dark:text-ink-100">{title}</h3> : null}
       <div className="grid gap-3">
         {records.map((item, index) => {
           const titleText = asString(item.title) ?? asString(item.name) ?? `Result ${index + 1}`;
@@ -50,24 +50,24 @@ export function GenericCards({ items, title }: { items: unknown; title?: string 
           const date = asString(item.lastUpdatedAt) ?? asString(item.crawledAt);
 
           return (
-            <article className="rounded-2xl border border-ink-200 bg-white p-4 transition hover:border-brand-500/60" key={`${url ?? titleText}-${index}`}>
+            <article className="border border-ink-200 bg-white p-4 transition hover:border-brand-500/60 dark:border-ink-800 dark:bg-ink-900 dark:hover:border-brand-500/60" key={`${url ?? titleText}-${index}`}>
               <div className="flex gap-4">
                 {thumbnail ? (
-                  <img alt="" className="h-20 w-28 rounded-xl object-cover" loading="lazy" src={thumbnail} />
+                  <img alt="" className="h-20 w-28 object-cover" loading="lazy" src={thumbnail} />
                 ) : null}
                 <div className="min-w-0 flex-1">
-                  <h4 className="font-semibold text-ink-950">
+                  <h4 className="font-semibold text-ink-950 dark:text-ink-100">
                     {url ? (
-                      <a className="hover:text-brand-600 hover:underline" href={url} rel="noreferrer" target="_blank">
+                      <a className="hover:text-brand-600 hover:underline dark:hover:text-brand-300" href={url} rel="noreferrer" target="_blank">
                         {titleText}
                       </a>
                     ) : (
                       titleText
                     )}
                   </h4>
-                  {url ? <p className="mt-1 truncate text-xs text-brand-700">{url}</p> : null}
+                  {url ? <p className="mt-1 truncate text-xs text-brand-700 dark:text-brand-300">{url}</p> : null}
                   {description ? <div className="mt-2"><Description text={description} /></div> : null}
-                  {date ? <p className="mt-2 text-xs text-ink-500">Updated {formatDate(date)}</p> : null}
+                  {date ? <p className="mt-2 text-xs text-ink-500 dark:text-ink-400">Updated {formatDate(date)}</p> : null}
                 </div>
               </div>
             </article>

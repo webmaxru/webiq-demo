@@ -27,7 +27,7 @@ export function RunBar({ loading, disabled, telemetry, onRun, onCancel }: RunBar
         </button>
       ) : null}
       {telemetry ? (
-        <span className="badge bg-blue-50 text-blue-700 ring-blue-200">{telemetry.elapsedMs} ms</span>
+        <span className="badge bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-500/15 dark:text-blue-200 dark:ring-blue-500/40">{telemetry.elapsedMs} ms</span>
       ) : null}
     </div>
   );

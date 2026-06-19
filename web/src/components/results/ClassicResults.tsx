@@ -12,10 +12,10 @@ export function ClassicResults({ data }: { data: JsonRecord }) {
     <div className="space-y-6">
       {signals ? (
         <section>
-          <h3 className="mb-2 text-base font-semibold text-ink-900">Query signals</h3>
+          <h3 className="mb-2 text-base font-semibold text-ink-900 dark:text-ink-100">Query signals</h3>
           <div className="flex flex-wrap gap-2">
             {Object.entries(signals).map(([key, value]) => (
-              <span className="badge bg-ink-100 text-ink-700 ring-ink-200" key={key}>
+              <span className="badge bg-ink-100 text-ink-700 ring-ink-200 dark:bg-ink-800 dark:text-ink-200 dark:ring-ink-700" key={key}>
                 {key}: {String(value)}
               </span>
             ))}
@@ -27,7 +27,7 @@ export function ClassicResults({ data }: { data: JsonRecord }) {
       ) : (
         <GenericCards items={[]} />
       )}
-      {typeof data.traceId === 'string' ? <p className="text-xs text-ink-500">Trace ID: {data.traceId}</p> : null}
+      {typeof data.traceId === 'string' ? <p className="text-xs text-ink-500 dark:text-ink-400">Trace ID: {data.traceId}</p> : null}
     </div>
   );
 }
