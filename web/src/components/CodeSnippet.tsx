@@ -17,8 +17,8 @@ export function CodeSnippet({ response }: CodeSnippetProps) {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-ink-600">Install: <code className="font-mono">npm i @microsoft/webiq</code></p>
-      <div className="overflow-hidden rounded-2xl border border-ink-200 bg-ink-950">
+      <p className="text-sm text-ink-600 dark:text-ink-400">Install: <code className="font-mono">npm i @microsoft/webiq</code></p>
+      <div className="overflow-hidden border border-ink-200 bg-ink-950 dark:border-ink-800">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-2">
           <h3 className="text-sm font-semibold text-white">SDK snippet</h3>
           <button className="text-xs font-semibold text-blue-200 hover:text-white" onClick={copy} type="button">

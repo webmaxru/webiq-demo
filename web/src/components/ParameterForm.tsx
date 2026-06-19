@@ -37,14 +37,14 @@ export function compactParams(values: ParamsMap): ParamsMap {
 
 export function ParameterForm({ params, values, onChange, onReset }: ParameterFormProps) {
   if (params.length === 0) {
-    return <p className="text-sm text-ink-500">This endpoint has no extra parameters.</p>;
+    return <p className="text-sm text-ink-500 dark:text-ink-400">This endpoint has no extra parameters.</p>;
   }
 
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-500">Parameters</h3>
-        <button className="text-sm font-semibold text-brand-600 hover:text-brand-700" onClick={onReset} type="button">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">Parameters</h3>
+        <button className="text-sm font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-300" onClick={onReset} type="button">
           Reset to defaults
         </button>
       </div>

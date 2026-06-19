@@ -11,8 +11,10 @@ export function ErrorBanner({ failure }: ErrorBannerProps) {
 
   return (
     <div
-      className={`rounded-2xl border px-4 py-4 text-sm ${
-        isRateLimited ? 'border-amber-200 bg-amber-50 text-amber-950' : 'border-red-200 bg-red-50 text-red-950'
+      className={`border px-4 py-4 text-sm ${
+        isRateLimited
+          ? 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100'
+          : 'border-red-200 bg-red-50 text-red-950 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-100'
       }`}
     >
       <div className="flex flex-wrap items-center gap-2">

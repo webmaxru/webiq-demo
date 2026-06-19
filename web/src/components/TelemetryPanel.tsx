@@ -7,9 +7,9 @@ interface TelemetryPanelProps {
 
 function row(label: string, value?: string | number) {
   return (
-    <div className="rounded-xl border border-ink-200 bg-white p-3">
-      <dt className="text-xs font-semibold uppercase tracking-wide text-ink-500">{label}</dt>
-      <dd className="mt-1 break-all text-sm font-medium text-ink-900">{value ?? '—'}</dd>
+    <div className="border border-ink-200 bg-white p-3 dark:border-ink-800 dark:bg-ink-900">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">{label}</dt>
+      <dd className="mt-1 break-all text-sm font-medium text-ink-900 dark:text-ink-100">{value ?? '—'}</dd>
     </div>
   );
 }
@@ -19,11 +19,11 @@ export function TelemetryPanel({ response }: TelemetryPanelProps) {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-ink-600">These values come from the SDK <code className="font-mono">telemetryHook</code>.</p>
+      <p className="text-sm text-ink-600 dark:text-ink-400">These values come from the SDK <code className="font-mono">telemetryHook</code>.</p>
       <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {row('Elapsed', telemetry ? `${telemetry.elapsedMs} ms` : undefined)}
-        <div className="rounded-xl border border-ink-200 bg-white p-3">
-          <dt className="text-xs font-semibold uppercase tracking-wide text-ink-500">Status</dt>
+        <div className="border border-ink-200 bg-white p-3 dark:border-ink-800 dark:bg-ink-900">
+          <dt className="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">Status</dt>
           <dd className="mt-2">
             <span className={`badge ${statusColor(telemetry?.statusCode)}`}>{telemetry?.statusCode ?? '—'}</span>
           </dd>
