@@ -13,7 +13,8 @@ official [`@microsoft/webiq`](https://www.npmjs.com/package/@microsoft/webiq) SD
   (React + Vite + Tailwind, **ESM**). Node ≥ 22, npm ≥ 10.
 - **Single combined container** in prod: the Express server serves the API **and** the
   built SPA (`web/dist`) on one origin.
-- **Deployed** to Azure Container Apps (scale-to-zero) via `azd` + Bicep, live at
+- **Deployed** to Azure Container Apps (one warm replica by default, `minReplicas: 1`;
+  `WEBIQ_MIN_REPLICAS=0` to scale to zero) via `azd` + Bicep, live at
   https://webiq.isainative.dev.
 
 ## Conventions
@@ -125,6 +126,10 @@ Each entry is **symptom → cause → fix**. These are the things that previousl
 
 ### E3. Cloudflare proxy must be OFF during issuance
 - The CNAME must be **grey-cloud (DNS only)** while the cert issues — Cloudflare's proxy hides the CNAME and breaks validation. Verify it resolves directly to the env IP (`68.220.145.84`), not a Cloudflare edge IP. Switch to orange + SSL **Full (strict)** only **after** issuance.
+
+### E4. Cost budgets have no currency — and `''` is not how you escape a quote in Bicep
+- **Cost alerts:** the subscription-wide `Microsoft.Consumption/budgets` (`budget-webiq-demo`, `WEBIQ_MONTHLY_BUDGET`, default 50) emits spend alerts via a dedicated cost action group → Owner role (same "no stored email" pattern as the abuse alert, Section J5). `notifications.*.threshold` is a **percent of `amount`** (so 80/100), not an absolute value; `amount` is an **integer with NO currency field** — Azure reads it in the **subscription's billing currency**, so `50` = 50 NOK only if the sub bills in NOK. At RG scope a budget needs `contactEmails` **or** `contactGroups`; supplying `contactGroups: [actionGroupId]` with `contactEmails: []` satisfies it without storing an address. `startDate` must be first-of-month, set via `param budgetStartDate string = utcNow('yyyy-MM-01')` (utcNow is only valid in a param default).
+- **Bicep quote escaping:** inside a single-quoted Bicep string, escape an apostrophe as `\'` — **not** `''` (the ARM-JSON/SQL style). Writing `subscription''s` makes the parser see two adjacent strings and fails with a confusing `BCP071 "Expected 1 argument, but got 2"` on the `@description(...)`. Invisible until `bicep build`.
 
 ## F. Editing a live Container App via ARM REST (GET → PUT)
 

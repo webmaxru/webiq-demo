@@ -21,10 +21,14 @@ param serviceName string = 'app'
 @description('Container ingress/target port. Must match the port the server listens on.')
 param targetPort int = 8080
 
-// Cost note: scale-to-zero (minReplicas 0) means no compute charge while idle.
+// Cost note: minReplicas 1 keeps one warm replica, so the first request after a quiet
+// period skips the cold start. While that replica isn't serving traffic it is billed at
+// the reduced Container Apps *idle* rate (vCPU idle ≈ $0.000003/vCPU-s vs active ≈
+// $0.000024/vCPU-s), not the active rate — ~$4–5/mo at 0.25 vCPU / 0.5 GiB after the
+// monthly free grant. Set to 0 to scale to zero ($0 idle compute, cold start on wake).
 @minValue(0)
-@description('Minimum replicas. 0 = scale to zero (no idle compute cost).')
-param minReplicas int = 0
+@description('Minimum replicas. 1 (default) keeps a warm instance to avoid cold starts (billed at the reduced idle rate when not serving traffic). 0 = scale to zero (no idle compute cost, cold start on the first request).')
+param minReplicas int = 1
 
 @minValue(1)
 @description('Maximum replicas under load.')
@@ -410,6 +414,27 @@ resource abuseActionGroup 'Microsoft.Insights/actionGroups@2023-09-01-preview' =
   }
 }
 
+// Action group for the cost-budget spend alert. Mirrors the abuse action group: an
+// ARM-role receiver targeting the subscription Owner role, so Azure emails the
+// account(s) that own the subscription — no personal address is stored in the repo. The
+// subscription-scoped budget in main.bicep references this group via its resource id.
+resource costActionGroup 'Microsoft.Insights/actionGroups@2023-09-01-preview' = {
+  name: 'ag-${environmentName}-cost'
+  location: 'global'
+  tags: tags
+  properties: {
+    groupShortName: 'webiqCost'
+    enabled: true
+    armRoleReceivers: [
+      {
+        name: 'subscription-owners'
+        roleId: ownerRoleId
+        useCommonAlertSchema: true
+      }
+    ]
+  }
+}
+
 // Log alert: fires whenever the gateway records abuse — a per-IP rate-limit hit
 // (SandboxRateLimited) or an oversized input/body rejection (SandboxAbuse). main
 // also emits SandboxRateLimited on upstream 429/430s, so those are covered too.
@@ -463,3 +488,5 @@ output applicationInsightsName string = applicationInsights.name
 output engagementWorkbookName string = engagementWorkbook.name
 output abuseAlertName string = abuseAlert.name
 output abuseActionGroupName string = abuseActionGroup.name
+output costActionGroupId string = costActionGroup.id
+output costActionGroupName string = costActionGroup.name

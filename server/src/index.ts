@@ -72,7 +72,7 @@ const server = app.listen(env.port, () => {
 });
 
 // Flush telemetry on shutdown (Container Apps sends SIGTERM on revision swap /
-// scale-to-zero) so buffered events are not lost.
+// scale-in) so buffered events are not lost.
 let shuttingDown = false;
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
   if (shuttingDown) {

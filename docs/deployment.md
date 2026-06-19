@@ -19,34 +19,101 @@ so an **idle app consumes ~$0** of compute.
 
 | Resource | Name | Notes |
 |----------|------|-------|
-| Container App | `ca-webiq-demo-wr3bqs` | scale 0→3, 0.25 vCPU / 0.5 GiB, system-assigned MI |
+| Container App | `ca-webiq-demo-wr3bqs` | scale 1→3 (one warm replica), 0.25 vCPU / 0.5 GiB, system-assigned MI |
 | Container Apps Env | `cae-webiq-demo-wr3bqs` | **Consumption** (no idle base cost) |
 | Container Registry | `crwebiqdemowr3bqs` | **Basic** |
 | Log Analytics | `log-webiq-demo-wr3bqs` | 30-day retention |
 | Application Insights | `appi-webiq-demo-wr3bqs` | workspace-based (shares the Log Analytics workspace) |
 | Workbook | `Web IQ — User Engagement` | engagement dashboard, bound to App Insights |
 | Action group + alert | `ag-/alert-webiq-demo-abuse` | abuse alert → notifies the subscription **Owner** role (always provisioned) |
+| Cost action group | `ag-webiq-demo-cost` | spend-alert receiver → notifies the subscription **Owner** role |
+| Cost budget | `budget-webiq-demo` | **subscription-scoped** Cost Management budget (default 50, billing currency) → spend alerts at 80% / 100% actual + 100% forecast |
 | Managed certificate | `mc-webiq-isainative-dev` | free, on the env, for the custom domain |
 
-## Cost model (why idle ≈ $0)
+## Cost model
 
-| Resource | Idle cost |
-|----------|-----------|
-| Container App compute (`minReplicas: 0`) | **$0** when no traffic |
+The app defaults to **one always-warm replica** (`minReplicas: 1`) so the first request
+after a quiet period skips the Container Apps **cold start**. An idle warm replica is
+billed at the reduced **idle** rate, not the active rate.
+
+| Resource | Monthly cost (idle) |
+|----------|---------------------|
+| Container App compute (`minReplicas: 1`, 0.25 vCPU / 0.5 GiB) | **~$4–5/mo** — one warm replica at idle rates, after the free grant |
 | Container Apps Environment (Consumption) | **$0** base |
 | Log Analytics | within free tier |
-| **ACR Basic** | **~$5/mo** flat — the only unavoidable idle cost |
+| **ACR Basic** | **~$5/mo** flat |
 
-Trade-off: scale-to-zero adds a brief **cold start** on the first request after idle.
+**Estimated total ≈ $9–10/mo** (warm) vs **≈ $5/mo** with scale-to-zero (ACR only).
+
+### Warm-replica math (East US 2, Consumption plan)
+
+One replica running 24×7 ≈ 0.25 vCPU and 0.5 GiB for ~2,628,000 s/month:
+
+- vCPU: 0.25 × 2,628,000 = 657,000 vCPU-s − 180,000 free = **477,000** billable
+- Memory: 0.5 × 2,628,000 = 1,314,000 GiB-s − 360,000 free = **954,000** billable
+
+At **idle** rates ($0.000003 /vCPU-s and /GiB-s): 477,000 × $0.000003 + 954,000 ×
+$0.000003 ≈ $1.43 + $2.86 = **~$4.3/mo**. (At **active** rates — $0.000024 /vCPU-s — it
+would be ~$14/mo, but a low-traffic demo replica is idle almost all the time, so expect
+the lower end.) Idle billing applies because the revision has `minReplicas ≥ 1`; a replica
+counts as idle while it serves no HTTP requests, uses < 0.01 vCPU, and receives < 1 KB/s.
+The free grants (180k vCPU-s, 360k GiB-s, 2M requests) are per **subscription** per month,
+so a subscription that already consumes them elsewhere shifts this estimate upward.
+0.25 vCPU / 0.5 GiB is the smallest Container Apps allocation, so this is the cheapest way
+to keep a minimum instance warm — a Dedicated plan would add a ~$73/mo management base.
+
+### Scale to zero instead (cheapest, with cold start)
+
+Set the minimum back to 0 to drop idle compute to **$0** (only ACR ~$5/mo), at the cost of
+a brief cold start on the first request after idle:
+
+```bash
+azd env set WEBIQ_MIN_REPLICAS 0
+azd provision
+```
+
+`WEBIQ_MIN_REPLICAS` is optional and **defaults to 1** when unset.
+
+### Spend alerts (Cost Management budget)
+
+A **subscription-scoped** `Microsoft.Consumption/budgets` resource (`budget-webiq-demo`)
+raises Azure spend alerts. It defaults to an amount of **50** and notifies the subscription
+**Owner** role (via the `ag-webiq-demo-cost` action group — no personal email stored, same
+pattern as the abuse alert). Three notifications fire by email:
+
+| Notification | Trigger | At amount 50 |
+|--------------|---------|--------------|
+| Actual ≥ 80% | actual month-to-date spend passes 80% of the amount | 40 |
+| Actual ≥ 100% | actual spend passes the amount (the requested threshold) | 50 |
+| Forecasted ≥ 100% | the month is *forecast* to exceed the amount | 50 |
+
+Change the amount (and switch off the warning thresholds in Bicep if you only want the
+exact-100% alert):
+
+```bash
+azd env set WEBIQ_MONTHLY_BUDGET 50   # optional, default 50
+azd provision
+```
+
+> **⚠️ Currency:** Azure Cost Management budgets have **no currency field** — `50` is
+> interpreted in the **subscription's billing currency**, so it equals **50 NOK only if the
+> subscription bills in NOK**. Confirm under *Cost Management → Properties / Invoices*; if it
+> bills in another currency, set `WEBIQ_MONTHLY_BUDGET` to the equivalent number.
+>
+> **⚠️ Reality check:** this app costs **~$9–10/mo warm ≈ ~100 NOK** or **~$5/mo
+> scale-to-zero ≈ ~55 NOK** (at ~10–11 NOK/USD). Because the budget is subscription-wide and
+> even ACR Basic alone (~$5 ≈ ~55 NOK) exceeds 50, a **50 NOK** budget will likely alert
+> every month. Raise `WEBIQ_MONTHLY_BUDGET`, or scope the budget to just `rg-webiq-demo` by
+> moving the `costBudget` resource into `modules/resources.bicep`, if that isn't intended.
 
 ## Infrastructure (`infra/`)
 
 | File | Purpose |
 |------|---------|
-| `main.bicep` | Subscription-scoped entry: RG + `resources` module + `acr-pull-role` module. Params: `environmentName`, `location`, `webiqApiKey` (secure), `customDomain`, `bindCertificate`. |
-| `modules/resources.bicep` | Log Analytics, App Insights + engagement workbook, ACR, Container Apps env, the Container App, optional managed cert, and the abuse alert (action group → Owner role + scheduled query rule). |
+| `main.bicep` | Subscription-scoped entry: RG + `resources` module + `acr-pull-role` module + a subscription-wide cost budget. Params: `environmentName`, `location`, `webiqApiKey` (secure), `customDomain`, `bindCertificate`, `minReplicas`, `monthlyBudgetAmount`. |
+| `modules/resources.bicep` | Log Analytics, App Insights + engagement workbook, ACR, Container Apps env, the Container App, optional managed cert, the abuse alert (action group → Owner role + scheduled query rule), and the cost action group (→ Owner role) used by the budget. |
 | `modules/acr-pull-role.bicep` | `AcrPull` role for the app's system identity, scoped to ACR (separate module → no circular dependency). |
-| `main.parameters.json` | ARM-JSON params with `${AZURE_ENV_NAME}` / `${WEBIQ_API_KEY}` / `${WEBIQ_CUSTOM_DOMAIN}` / `${WEBIQ_BIND_CERT}` placeholders azd substitutes. |
+| `main.parameters.json` | ARM-JSON params with `${AZURE_ENV_NAME}` / `${WEBIQ_API_KEY}` / `${WEBIQ_CUSTOM_DOMAIN}` / `${WEBIQ_BIND_CERT}` / `${WEBIQ_MIN_REPLICAS}` / `${WEBIQ_MONTHLY_BUDGET}` placeholders azd substitutes. |
 
 ### azd environment variables
 
@@ -57,6 +124,8 @@ azd env set AZURE_LOCATION        eastus2
 azd env set WEBIQ_API_KEY         <key>     # becomes a Container App secret
 azd env set WEBIQ_CUSTOM_DOMAIN   webiq.isainative.dev   # optional
 azd env set WEBIQ_BIND_CERT       true                    # phase 2 of custom domain
+azd env set WEBIQ_MIN_REPLICAS    1                       # optional, default 1 (warm). 0 = scale to zero
+azd env set WEBIQ_MONTHLY_BUDGET  50                      # optional, default 50 — cost-budget amount (billing currency)
 ```
 
 > The abuse alert needs no env var — it is always provisioned and notifies the subscription
@@ -109,7 +178,7 @@ two-job pipeline:
 - Health: `GET /api/health` → `{ status:'ok', keyConfigured, auth, node }`. Used by the
   Container App liveness/readiness probes (`/api/health` on the target port).
 - Logs: Log Analytics (`ContainerAppConsoleLogs_CL` / `ContainerAppSystemLogs_CL`).
-- Scale: HTTP rule, `concurrentRequests: 50`, `minReplicas 0`, `maxReplicas 3`.
+- Scale: HTTP rule, `concurrentRequests: 50`, `minReplicas 1` (warm; set `WEBIQ_MIN_REPLICAS 0` to scale to zero), `maxReplicas 3`.
 
 ## Monitoring & telemetry (Application Insights)
 

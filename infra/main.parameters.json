@@ -16,6 +16,12 @@
     },
     "bindCertificate": {
       "value": "${WEBIQ_BIND_CERT}"
+    },
+    "minReplicas": {
+      "value": "${WEBIQ_MIN_REPLICAS}"
+    },
+    "monthlyBudgetAmount": {
+      "value": "${WEBIQ_MONTHLY_BUDGET}"
     }
   }
 }

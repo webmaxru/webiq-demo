@@ -137,20 +137,29 @@ Stop with `npm run docker:down`.
 
 ---
 
-## Deploy to Azure (Container Apps, scale-to-zero)
+## Deploy to Azure (Container Apps)
 
 This repo is deploy-ready for **Azure Container Apps** using the **Azure Developer CLI (`azd`)**.
 It deploys a **single container** (the Express server serves both the API and the built
-SPA) onto a **Consumption** Container Apps environment with **`minReplicas: 0`** — so an
-**idle app consumes no compute credits** (only a brief cold start on the first request
-after idle).
+SPA) onto a **Consumption** Container Apps environment. By default it keeps **one warm
+replica** (`minReplicas: 1`) so the first request after a quiet period has **no cold
+start**; an idle warm replica is billed at the reduced Container Apps **idle** rate. Set
+`WEBIQ_MIN_REPLICAS 0` to scale to zero instead ($0 idle compute, brief cold start on wake).
 
 **What gets created:** 1 Container Apps environment (Consumption), 1 Container App
-(0.25 vCPU / 0.5 GiB, scale 0→3), 1 Azure Container Registry (Basic), 1 Log Analytics
+(0.25 vCPU / 0.5 GiB, scale 1→3), 1 Azure Container Registry (Basic), 1 Log Analytics
 workspace. `WEBIQ_API_KEY` is stored as a Container App **secret**.
 
-**Idle cost:** compute **$0** (scale-to-zero) · Consumption env **$0** base · Log Analytics
-within free tier · **ACR Basic ~$5/mo** (the only unavoidable idle cost).
+**Idle cost:** one warm replica **~$4–5/mo** (idle rates) · Consumption env **$0** base ·
+Log Analytics within free tier · **ACR Basic ~$5/mo** → **~$9–10/mo** total. Scale to zero
+(`WEBIQ_MIN_REPLICAS 0`) drops compute to **$0** (ACR ~$5/mo only). See
+[docs/deployment.md](./docs/deployment.md#cost-model).
+
+**Spend alerts:** a subscription-scoped Cost Management **budget** (`WEBIQ_MONTHLY_BUDGET`,
+default **50**) emails the subscription **Owner** role at 80% / 100% / forecast-100% of the
+amount. Note: budgets carry **no currency** — `50` is in the subscription's billing currency
+(50 NOK only if it bills in NOK). See
+[docs/deployment.md](./docs/deployment.md#spend-alerts-cost-management-budget).
 
 ### Prerequisites
 - [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd) and Docker.

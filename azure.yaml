@@ -5,7 +5,8 @@ metadata:
 
 # Single combined container: the Express server serves both the REST API
 # (/api/*) and the built React SPA on one origin. Cheapest topology — one
-# scale-to-zero Container App.
+# Container App that defaults to a single warm replica (minReplicas: 1, billed
+# at the idle rate); set WEBIQ_MIN_REPLICAS=0 to scale to zero instead.
 services:
   app:
     project: .
