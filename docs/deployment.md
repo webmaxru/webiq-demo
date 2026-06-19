@@ -130,9 +130,11 @@ anonymised `anonId` = `sha256(salt + ip + user-agent)` (no PII stored). The site
 cookies** and a public **/privacy** notice (`web/src/components/PrivacyPolicy.tsx`) documents
 the processing under GDPR. Visitors can object via a one-click opt-out, and the server also
 honours `DNT: 1` / `Sec-GPC: 1` (`analyticsOptedOut` in `appInsights.ts`): when opted out, the
-search route emits **no** `anonId` and **no** analytics telemetry (`SandboxSearch` etc.).
-Security signals (`SandboxRateLimited` / `SandboxAbuse`) are recorded regardless of opt-out
-and include the raw IP so an operator can act on abuse.
+search route emits **no** `anonId` and **no** analytics telemetry (`SandboxSearch`, plus the
+upstream-429 `SandboxRateLimited` + `SandboxRateLimitErrors`). The **gateway** abuse signals —
+`SandboxAbuse` and the per-IP `SandboxRateLimited` carrying `source: 'gateway'`, both emitted by
+`trackAbuse` — are recorded **regardless** of opt-out and include the raw IP so an operator can
+act on abuse.
 
 - **Engagement dashboard:** an Azure Monitor **Workbook** — "Web IQ — User Engagement" —
   is deployed with the App Insights resource (Monitoring → Workbooks). It shows searches &
