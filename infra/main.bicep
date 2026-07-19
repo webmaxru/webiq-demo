@@ -19,8 +19,8 @@ param customDomain string = ''
 @description('Two-phase managed-cert flag (string from azd WEBIQ_BIND_CERT). "false"/empty = phase 1 (bind hostname as Disabled). "true" = phase 2 (issue cert + SniEnabled).')
 param bindCertificate string = 'false'
 
-@description('Minimum always-running replicas (string from azd WEBIQ_MIN_REPLICAS). Empty/"1" (default) keeps one warm replica to avoid cold starts — billed at the reduced Container Apps idle rate while not serving traffic (~$4–5/mo at 0.25 vCPU / 0.5 GiB after the free grant). "0" = scale to zero ($0 idle compute, cold start on the first request after idle).')
-param minReplicas string = '1'
+@description('Minimum always-running replicas (string from azd WEBIQ_MIN_REPLICAS). Empty/"0" (default) scales to zero — $0 idle compute, with a brief cold start on the first request after idle. "1" keeps one warm replica to avoid cold starts, billed at the reduced Container Apps idle rate (~$4–5/mo at 0.25 vCPU / 0.5 GiB after the free grant).')
+param minReplicas string = '0'
 
 @description('Monthly cost-budget amount that triggers spend alerts (string from azd WEBIQ_MONTHLY_BUDGET). Empty defaults to 50. IMPORTANT: Azure Cost Management budgets have NO currency field — the number is interpreted in whatever currency the subscription is billed in. So 50 means 50 NOK only if this subscription bills in NOK; otherwise it is 50 of the subscription\'s billing currency.')
 param monthlyBudgetAmount string = '50'
@@ -41,7 +41,7 @@ resource rg 'Microsoft.Resources/resourceGroups@2023-07-01' = {
   tags: tags
 }
 
-// Core resources: Log Analytics, ACR, Container Apps env, and the app.
+// Core resources: Log Analytics, Container Apps env, and the app.
 module resources './modules/resources.bicep' = {
   name: 'resources'
   scope: rg
@@ -52,19 +52,8 @@ module resources './modules/resources.bicep' = {
     webiqApiKey: webiqApiKey
     customDomain: customDomain
     bindCertificate: toLower(bindCertificate) == 'true'
-    // azd substitutes an unset WEBIQ_MIN_REPLICAS as '' — fall back to one warm replica.
-    minReplicas: empty(minReplicas) ? 1 : int(minReplicas)
-  }
-}
-
-// Phase 2: grant the app's managed identity AcrPull on the registry.
-// Separate module to avoid a circular dependency with the container app.
-module acrPullRole './modules/acr-pull-role.bicep' = {
-  name: 'acrPullRole'
-  scope: rg
-  params: {
-    acrName: resources.outputs.containerRegistryName
-    principalId: resources.outputs.containerAppPrincipalId
+    // azd substitutes an unset WEBIQ_MIN_REPLICAS as '' — fall back to scale-to-zero.
+    minReplicas: empty(minReplicas) ? 0 : int(minReplicas)
   }
 }
 
@@ -124,8 +113,6 @@ resource costBudget 'Microsoft.Consumption/budgets@2024-08-01' = {
 }
 
 output AZURE_RESOURCE_GROUP string = rg.name
-output AZURE_CONTAINER_REGISTRY_ENDPOINT string = resources.outputs.containerRegistryLoginServer
-output AZURE_CONTAINER_REGISTRY_NAME string = resources.outputs.containerRegistryName
 output AZURE_LOG_ANALYTICS_WORKSPACE_ID string = resources.outputs.logAnalyticsWorkspaceId
 output SERVICE_APP_NAME string = resources.outputs.containerAppName
 output SERVICE_APP_URI string = resources.outputs.containerAppUri

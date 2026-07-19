@@ -13,9 +13,10 @@ official [`@microsoft/webiq`](https://www.npmjs.com/package/@microsoft/webiq) SD
   (React + Vite + Tailwind, **ESM**). Node ≥ 22, npm ≥ 10.
 - **Single combined container** in prod: the Express server serves the API **and** the
   built SPA (`web/dist`) on one origin.
-- **Deployed** to Azure Container Apps (one warm replica by default, `minReplicas: 1`;
-  `WEBIQ_MIN_REPLICAS=0` to scale to zero) via `azd` + Bicep, live at
-  https://webiq.isainative.dev.
+- **Deployed** to Azure Container Apps (**scale-to-zero by default**, `minReplicas: 0`;
+  `WEBIQ_MIN_REPLICAS=1` to keep one warm replica). Infra via `azd provision` + Bicep; the
+  container image ships to **GitHub Container Registry (ghcr.io)** — free, no ACR — and is
+  rolled out by GitHub Actions. Live at https://webiq.isainative.dev.
 
 ## Conventions
 
@@ -94,24 +95,38 @@ Each entry is **symptom → cause → fix**. These are the things that previousl
 - v1.23.0 can panic: `failed to resolve console for unknown flags error:unsupported format 'none'`. Capture raw output and parse defensively.
 - `azd auth token --output json` returns an **error JSON** (not a token) when the env's `AZURE_SUBSCRIPTION_ID` is set to an inaccessible sub. Temporarily clear it to enumerate access.
 
-## D. Azure Container Apps + ACR (the big one)
+## D. Container image on GitHub Container Registry (ghcr.io) + Container Apps
 
-### D1. Image pull fails with `UNAUTHORIZED` after `azd deploy`
+> **Cost/registry migration:** the app **no longer uses Azure Container Registry**. The image
+> is built + pushed to **ghcr.io** (free for this public repo) by `.github/workflows/deploy.yml`
+> and rolled out with `az containerapp update`. `azd` is now **provision-only** (no `services`
+> block in `azure.yaml`). The Container App also defaults to **scale-to-zero** (`minReplicas: 0`).
+> The ACR-era gotchas below are kept as historical context — the pitfalls they warn about no
+> longer apply to this repo, but the reasoning is useful if you ever reintroduce a private registry.
+
+### D0. Pulling a ghcr.io image from Container Apps (current model)
+- **Public package ⇒ no credentials.** Because the `ghcr.io/webmaxru/webiq-demo` package is
+  **public**, the Container App pulls it with **no `registries` block, no managed identity, no
+  stored token**. This is the whole point of the migration: free registry, credential-less pull.
+- **One-time step after the first push:** a freshly pushed ghcr package is **private** by default →
+  `az containerapp update` fails to pull it until you flip the package visibility to **Public**
+  (repo → *Packages* → *Package settings* → *Change visibility*). If you must keep it private,
+  re-add a `registries` block authenticating to `ghcr.io` with a PAT stored as a Container App
+  secret (reintroduces a managed secret — avoided here on purpose).
+- **Auth split:** CI **pushes** with the workflow's built-in `GITHUB_TOKEN` (`packages: write`);
+  the Container App **pulls** anonymously. Azure sign-in for the `az containerapp update` step is
+  OIDC via `azure/login@v2` (reuses the `msi-webiq-demo` federated creds).
+
+### D1 (historical, ACR). Image pull fails with `UNAUTHORIZED` after `azd deploy`
 - **Symptom:** `RESPONSE 200 ... ContainerAppOperationError ... UNAUTHORIZED: authentication required` pulling `cr....azurecr.io/...`.
 - **Cause:** the Container App had **no `registries` block** linking its managed identity to ACR. The AcrPull role alone is not enough — the app must be told to authenticate to ACR via `identity: system`.
-- **Fix (Bicep):** add to `properties.configuration`:
-  ```bicep
-  registries: [
-    { server: containerRegistry.properties.loginServer, identity: 'system' }
-  ]
-  ```
-  Safe to declare at create time because the **initial image is the public placeholder** (`mcr.microsoft.com/azuredocs/containerapps-helloworld:latest`) — ACR auth is only exercised when the real image is deployed, by which point AcrPull exists. The AcrPull role assignment stays in a **separate module** (`acr-pull-role.bicep`) to avoid a circular dependency.
+- **Was fixed (Bicep)** by adding a `registries: [{ server: <acr>, identity: 'system' }]` block + a separate `acr-pull-role.bicep` module. No longer present — ghcr public pull needs none of this.
 
-### D2. Two-phase deploy for Container Apps + ACR + managed identity
-- Run **`azd provision` then `azd deploy` as separate steps** (not `azd up`), and confirm the **AcrPull** role has propagated between them (RBAC propagation can take minutes; a missing role causes a ~900 s revision timeout).
+### D2 (historical, ACR). Two-phase deploy for Container Apps + ACR + managed identity
+- With ACR you had to run **`azd provision` then `azd deploy` as separate steps** (not `azd up`) and wait for **AcrPull** RBAC to propagate (a missing role caused a ~900 s revision timeout). Irrelevant now: provisioning (`azd provision`) and image rollout (CI) are already separate, and there is no pull-time RBAC.
 
-### D3. `azd package` fails: "must specify language or image"
-- azd 1.23 requires a **`language`** field in `azure.yaml` **even with** a `docker:` block. Add `language: ts`.
+### D3 (historical, ACR). `azd package` fails: "must specify language or image"
+- azd 1.23 required a **`language`** field in `azure.yaml` even with a `docker:` block. Moot now — `azure.yaml` has no `services`/`docker` block; azd only provisions infra.
 
 ## E. Custom domain + managed certificate (Container Apps)
 
@@ -142,10 +157,10 @@ ARM REST with azd's token. Three traps, all learned the hard way:
 
 ### F2. Echoing read-only fields → app stuck `provisioningState: Failed`
 - A full GET→PUT that includes **computed/read-only** fields (`latestRevisionFqdn`, `outboundIpAddresses`, etc.) makes the reconcile fail; the app sticks in `Failed` (revision still serves, but cert issuance stalls — see E2).
-- **Fix:** PUT a **clean body with only writable fields**: `location`, `identity`, `tags`, and `properties.{environmentId, configuration{activeRevisionsMode, ingress, registries, secrets}, template{containers, scale}}`.
+- **Fix:** PUT a **clean body with only writable fields**: `location`, `identity`, `tags`, and `properties.{environmentId, configuration{activeRevisionsMode, ingress, secrets}, template{containers, scale}}`. (There is no longer a `registries` block — the ghcr.io image is public.)
 
-### F3. Dropping `tags` breaks `azd deploy`
-- If your clean PUT omits `tags`, the `azd-service-name: app` tag is lost and the next `azd deploy` fails: *"unable to find a resource tagged with 'azd-service-name: app'"*.
+### F3. Dropping `tags` breaks the CI image rollout
+- If your clean PUT omits `tags`, the `azd-service-name: app` tag is lost. The deploy workflow finds the app **by that tag** (`az containerapp list --query "[?tags.\"azd-service-name\"=='app'].name"`), so the `az containerapp update` step can no longer locate it.
 - **Fix:** always include `tags: { 'azd-env-name': 'webiq-demo', 'azd-service-name': 'app' }` in the PUT.
 
 ## G. Tooling & environment (Windows / PowerShell)
@@ -215,8 +230,8 @@ ARM REST with azd's token. Three traps, all learned the hard way:
 - **Fix:** `Microsoft.Insights/actionGroups` with an **`armRoleReceivers`** entry → built-in **Owner** role GUID `8e3af657-a8ff-443c-a75c-2fe8c4bcb635` (`useCommonAlertSchema: true`), **no `emailReceivers`, no param, no `if()` gate**. This replaced main's earlier `emailReceivers` + `WEBIQ_ALERT_EMAIL` (which required a custom address). The scheduled query rule is also unconditional now.
 
 ### J6. A BCP334 warning that isn't about your new code
-- **Symptom:** `bicep build` reports one `BCP334` ("value can be length 0… minimum length 5"). Easy to assume it's a new line.
-- **Reality:** decoding the diagnostic's `position`/`length` (see G4) shows it's the **pre-existing** `containerRegistryName` (ACR names have a min length). The abuse-alert additions introduce **zero** new diagnostics. Don't `#disable-next-line` the wrong line — locate the real token first, and leave pre-existing warnings alone.
+- **Symptom:** historically `bicep build` reported one `BCP334` ("value can be length 0… minimum length 5"). Easy to assume it's a new line.
+- **Reality:** decoding the diagnostic's `position`/`length` (see G4) showed it was the **pre-existing** `containerRegistryName` (ACR names have a min length), not the code you just touched. **That var was removed with the ACR→ghcr.io migration, so this warning no longer fires** — but the lesson stands: decode a diagnostic's real offset before `#disable-next-line`-ing the wrong line, and leave pre-existing warnings alone.
 
 ### J7. The "Apply" button can't bring a stale agent branch back
 - **Symptom:** VS Code "Apply changes to the current workspace" fails with *"stage or commit your changes and try again"* even though every worktree is clean.

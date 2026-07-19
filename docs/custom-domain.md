@@ -78,13 +78,17 @@ azd provision
 azd env set WEBIQ_BIND_CERT true
 azd provision
 
-azd deploy        # re-push the app image (azd provision resets it to the placeholder)
+# Re-roll the real image — `azd provision` resets it to the placeholder (see below)
+IMAGE=ghcr.io/webmaxru/webiq-demo
+APP=$(az containerapp list -g rg-webiq-demo --query "[?tags.\"azd-service-name\"=='app'].name | [0]" -o tsv)
+az containerapp update -n $APP -g rg-webiq-demo --image $IMAGE:latest
 ```
 
 > ⚠️ `azd provision` re-applies the Bicep, which resets the container image to the
-> public placeholder. Always run `azd deploy` afterwards to restore the real image.
-> Certificate issuance via CNAME validation typically takes 3–8 minutes; the app keeps
-> serving on its default `*.azurecontainerapps.io` hostname throughout.
+> public placeholder. Afterwards restore the real image — push to `main` (CI rebuilds and
+> rolls it) or run the `az containerapp update` step above. Certificate issuance via CNAME
+> validation typically takes 3–8 minutes; the app keeps serving on its default
+> `*.azurecontainerapps.io` hostname throughout.
 
 <details>
 <summary>Alternative: Azure CLI one-shot (handles both phases)</summary>
@@ -104,7 +108,7 @@ az containerapp hostname bind \
 ```
 
 `az containerapp hostname bind` performs the add → managed-cert → SNI-enable sequence
-for you, and does **not** reset the image (no `azd deploy` needed afterwards).
+for you, and does **not** reset the image (no image re-roll needed afterwards).
 </details>
 
 Verify it serves:

@@ -21,14 +21,14 @@ param serviceName string = 'app'
 @description('Container ingress/target port. Must match the port the server listens on.')
 param targetPort int = 8080
 
-// Cost note: minReplicas 1 keeps one warm replica, so the first request after a quiet
-// period skips the cold start. While that replica isn't serving traffic it is billed at
-// the reduced Container Apps *idle* rate (vCPU idle ≈ $0.000003/vCPU-s vs active ≈
-// $0.000024/vCPU-s), not the active rate — ~$4–5/mo at 0.25 vCPU / 0.5 GiB after the
-// monthly free grant. Set to 0 to scale to zero ($0 idle compute, cold start on wake).
+// Cost note: minReplicas 0 (default) scales the app to zero when idle, so idle compute
+// costs $0 — the trade-off is a brief Container Apps cold start on the first request after
+// a quiet period. Set to 1 to keep one warm replica (no cold start); an idle warm replica
+// is billed at the reduced Container Apps *idle* rate (vCPU idle ≈ $0.000003/vCPU-s vs
+// active ≈ $0.000024/vCPU-s) — ~$4–5/mo at 0.25 vCPU / 0.5 GiB after the monthly free grant.
 @minValue(0)
-@description('Minimum replicas. 1 (default) keeps a warm instance to avoid cold starts (billed at the reduced idle rate when not serving traffic). 0 = scale to zero (no idle compute cost, cold start on the first request).')
-param minReplicas int = 1
+@description('Minimum replicas. 0 (default) scales to zero (no idle compute cost, brief cold start on the first request). 1 keeps a warm instance to avoid cold starts (billed at the reduced idle rate when not serving traffic).')
+param minReplicas int = 0
 
 @minValue(1)
 @description('Maximum replicas under load.')
@@ -43,7 +43,6 @@ param bindCertificate bool = false
 var resourceSuffix = take(uniqueString(subscription().id, environmentName, location), 6)
 var logAnalyticsName = take('log-${environmentName}-${resourceSuffix}', 63)
 var appInsightsName = take('appi-${environmentName}-${resourceSuffix}', 63)
-var containerRegistryName = take(toLower(replace('cr${environmentName}${resourceSuffix}', '-', '')), 50)
 var containerEnvName = take('cae-${environmentName}-${resourceSuffix}', 32)
 var containerAppName = take('ca-${environmentName}-${resourceSuffix}', 32)
 var managedCertName = empty(customDomain) ? '' : take('mc-${replace(replace(customDomain, '.', '-'), '*', 'wild')}', 32)
@@ -85,18 +84,6 @@ resource applicationInsights 'Microsoft.Insights/components@2020-02-02' = {
   }
 }
 
-resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' = {
-  name: containerRegistryName
-  location: location
-  tags: tags
-  sku: {
-    name: 'Basic'
-  }
-  properties: {
-    adminUserEnabled: false
-  }
-}
-
 // Consumption-only environment: no workloadProfiles block => no idle base cost.
 resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: containerEnvName
@@ -129,10 +116,12 @@ resource managedCertificate 'Microsoft.App/managedEnvironments/managedCertificat
   }
 }
 
-// Registry/identity link: the app authenticates to ACR with its system-assigned
-// identity (AcrPull granted in acr-pull-role.bicep). Safe to declare at create time
-// because the initial image is the PUBLIC placeholder (mcr.microsoft.com) — ACR auth
-// is only exercised once the real image is deployed, by which time the role exists.
+// The container image is hosted on GitHub Container Registry (ghcr.io) and published as a
+// PUBLIC package, so the Container App pulls it with no registry credentials — no ACR, no
+// managed-identity AcrPull, no stored token. The initial image below is the public
+// mcr.microsoft.com placeholder; CI rolls in the real ghcr.io image via `az containerapp
+// update` (see .github/workflows/deploy.yml). A system-assigned identity is still attached
+// for other Azure integrations.
 resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: containerAppName
   location: location
@@ -157,12 +146,6 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           }
         ]
       }
-      registries: [
-        {
-          server: containerRegistry.properties.loginServer
-          identity: 'system'
-        }
-      ]
       secrets: [
         {
           name: 'webiq-api-key'
@@ -178,7 +161,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
       containers: [
         {
           name: serviceName
-          // Placeholder until azd pushes the real image; ingress/targetPort
+          // Public placeholder until CI rolls in the real ghcr.io image; ingress/targetPort
           // are fixed at provision time and matched by the runtime app.
           image: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
           resources: {
@@ -477,10 +460,7 @@ resource abuseAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' 
   }
 }
 
-output containerRegistryName string = containerRegistry.name
-output containerRegistryLoginServer string = containerRegistry.properties.loginServer
 output containerAppName string = containerApp.name
-output containerAppPrincipalId string = containerApp.identity.principalId
 output containerAppUri string = 'https://${containerApp.properties.configuration.ingress.fqdn}'
 output logAnalyticsWorkspaceId string = logAnalytics.id
 output customDomainUrl string = empty(customDomain) ? '' : 'https://${customDomain}'

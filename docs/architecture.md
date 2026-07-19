@@ -27,8 +27,8 @@ webiq-demo/
 ├─ tsconfig.base.json      # shared strict TS config
 ├─ Dockerfile              # multi-stage: build both → run server, serve SPA
 ├─ docker-compose.yml      # local two-container dev (web + server)
-├─ azure.yaml              # azd service definition (single containerapp)
-├─ infra/                  # Bicep IaC (Container Apps, ACR, Log Analytics, cert)
+├─ azure.yaml              # azd config (provision-only; image ships via ghcr.io + CI)
+├─ infra/                  # Bicep IaC (Container Apps, Log Analytics, App Insights, cert)
 ├─ server/                 # Express + TypeScript backend (CommonJS)
 └─ web/                    # React + Vite + Tailwind frontend (ESM)
 ```

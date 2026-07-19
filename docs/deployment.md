@@ -1,8 +1,11 @@
 # Deployment & operations
 
 The app runs as a **single Azure Container App** (the Express server serves the API and
-the built SPA), deployed with the **Azure Developer CLI (`azd`)** and **Bicep**, optimized
-so an **idle app consumes ~$0** of compute.
+the built SPA). Infrastructure is provisioned with the **Azure Developer CLI (`azd
+provision`)** and **Bicep**; the container image is built and published to **GitHub
+Container Registry (ghcr.io)** — free for this public repo, no Azure Container Registry — by
+**GitHub Actions**, which then rolls the app onto the new image. It **scales to zero when
+idle** by default, so an **idle app consumes ~$0**.
 
 ## Live environment
 
@@ -19,9 +22,9 @@ so an **idle app consumes ~$0** of compute.
 
 | Resource | Name | Notes |
 |----------|------|-------|
-| Container App | `ca-webiq-demo-wr3bqs` | scale 1→3 (one warm replica), 0.25 vCPU / 0.5 GiB, system-assigned MI |
+| Container App | `ca-webiq-demo-wr3bqs` | scale **0**→3 (scale-to-zero when idle), 0.25 vCPU / 0.5 GiB, system-assigned MI |
 | Container Apps Env | `cae-webiq-demo-wr3bqs` | **Consumption** (no idle base cost) |
-| Container Registry | `crwebiqdemowr3bqs` | **Basic** |
+| Container image registry | `ghcr.io/webmaxru/webiq-demo` | **GitHub Container Registry** — free (public package), replaces ACR |
 | Log Analytics | `log-webiq-demo-wr3bqs` | 30-day retention |
 | Application Insights | `appi-webiq-demo-wr3bqs` | workspace-based (shares the Log Analytics workspace) |
 | Workbook | `Web IQ — User Engagement` | engagement dashboard, bound to App Insights |
@@ -32,22 +35,27 @@ so an **idle app consumes ~$0** of compute.
 
 ## Cost model
 
-The app defaults to **one always-warm replica** (`minReplicas: 1`) so the first request
-after a quiet period skips the Container Apps **cold start**. An idle warm replica is
-billed at the reduced **idle** rate, not the active rate.
+The app defaults to **scale-to-zero** (`minReplicas: 0`): when no traffic arrives the
+Container App runs **zero replicas** and idle compute costs **$0**. The trade-off is a
+brief Container Apps **cold start** on the first request after a quiet period. The image is
+hosted on **GitHub Container Registry (ghcr.io)**, which is **free** for the public package
+— there is no Azure Container Registry, so its old ~$5/mo flat charge is gone.
 
 | Resource | Monthly cost (idle) |
 |----------|---------------------|
-| Container App compute (`minReplicas: 1`, 0.25 vCPU / 0.5 GiB) | **~$4–5/mo** — one warm replica at idle rates, after the free grant |
+| Container App compute (`minReplicas: 0`, scale-to-zero) | **$0** — no replicas run while idle |
 | Container Apps Environment (Consumption) | **$0** base |
 | Log Analytics | within free tier |
-| **ACR Basic** | **~$5/mo** flat |
+| **GitHub Container Registry (ghcr.io)** | **$0** — free for public packages |
 
-**Estimated total ≈ $9–10/mo** (warm) vs **≈ $5/mo** with scale-to-zero (ACR only).
+**Estimated total ≈ $0/mo idle.** Only per-request compute (metered by the second, mostly
+inside the monthly free grant) and any Log Analytics overage are billed. Keeping one warm
+replica instead (`WEBIQ_MIN_REPLICAS 1`, see below) adds **~$4–5/mo**.
 
 ### Warm-replica math (East US 2, Consumption plan)
 
-One replica running 24×7 ≈ 0.25 vCPU and 0.5 GiB for ~2,628,000 s/month:
+If you opt into one warm replica (`WEBIQ_MIN_REPLICAS 1`), it runs 24×7 ≈ 0.25 vCPU and
+0.5 GiB for ~2,628,000 s/month:
 
 - vCPU: 0.25 × 2,628,000 = 657,000 vCPU-s − 180,000 free = **477,000** billable
 - Memory: 0.5 × 2,628,000 = 1,314,000 GiB-s − 360,000 free = **954,000** billable
@@ -62,17 +70,17 @@ so a subscription that already consumes them elsewhere shifts this estimate upwa
 0.25 vCPU / 0.5 GiB is the smallest Container Apps allocation, so this is the cheapest way
 to keep a minimum instance warm — a Dedicated plan would add a ~$73/mo management base.
 
-### Scale to zero instead (cheapest, with cold start)
+### Keep one warm replica instead (no cold start)
 
-Set the minimum back to 0 to drop idle compute to **$0** (only ACR ~$5/mo), at the cost of
-a brief cold start on the first request after idle:
+The default is scale-to-zero. To trade **~$4–5/mo** for zero cold starts, keep one warm
+replica:
 
 ```bash
-azd env set WEBIQ_MIN_REPLICAS 0
+azd env set WEBIQ_MIN_REPLICAS 1
 azd provision
 ```
 
-`WEBIQ_MIN_REPLICAS` is optional and **defaults to 1** when unset.
+`WEBIQ_MIN_REPLICAS` is optional and **defaults to 0** (scale-to-zero) when unset.
 
 ### Spend alerts (Cost Management budget)
 
@@ -100,19 +108,19 @@ azd provision
 > subscription bills in NOK**. Confirm under *Cost Management → Properties / Invoices*; if it
 > bills in another currency, set `WEBIQ_MONTHLY_BUDGET` to the equivalent number.
 >
-> **⚠️ Reality check:** this app costs **~$9–10/mo warm ≈ ~100 NOK** or **~$5/mo
-> scale-to-zero ≈ ~55 NOK** (at ~10–11 NOK/USD). Because the budget is subscription-wide and
-> even ACR Basic alone (~$5 ≈ ~55 NOK) exceeds 50, a **50 NOK** budget will likely alert
-> every month. Raise `WEBIQ_MONTHLY_BUDGET`, or scope the budget to just `rg-webiq-demo` by
-> moving the `costBudget` resource into `modules/resources.bicep`, if that isn't intended.
+> **⚠️ Reality check:** this app now costs **~$0/mo idle** with scale-to-zero (ghcr.io is
+> free and there is no ACR), or **~$4–5/mo ≈ ~50 NOK** if you opt into one warm replica
+> (`WEBIQ_MIN_REPLICAS 1`). The budget is **subscription-wide**, so it still catches spend
+> from *other* resources in the subscription. Raise `WEBIQ_MONTHLY_BUDGET`, or scope the
+> budget to just `rg-webiq-demo` by moving the `costBudget` resource into
+> `modules/resources.bicep`, if the subscription-wide scope isn't intended.
 
 ## Infrastructure (`infra/`)
 
 | File | Purpose |
 |------|---------|
-| `main.bicep` | Subscription-scoped entry: RG + `resources` module + `acr-pull-role` module + a subscription-wide cost budget. Params: `environmentName`, `location`, `webiqApiKey` (secure), `customDomain`, `bindCertificate`, `minReplicas`, `monthlyBudgetAmount`. |
-| `modules/resources.bicep` | Log Analytics, App Insights + engagement workbook, ACR, Container Apps env, the Container App, optional managed cert, the abuse alert (action group → Owner role + scheduled query rule), and the cost action group (→ Owner role) used by the budget. |
-| `modules/acr-pull-role.bicep` | `AcrPull` role for the app's system identity, scoped to ACR (separate module → no circular dependency). |
+| `main.bicep` | Subscription-scoped entry: RG + `resources` module + a subscription-wide cost budget. Params: `environmentName`, `location`, `webiqApiKey` (secure), `customDomain`, `bindCertificate`, `minReplicas` (default 0 = scale-to-zero), `monthlyBudgetAmount`. |
+| `modules/resources.bicep` | Log Analytics, App Insights + engagement workbook, Container Apps env, the Container App (pulls its **public ghcr.io image** with no registry credentials), optional managed cert, the abuse alert (action group → Owner role + scheduled query rule), and the cost action group (→ Owner role) used by the budget. |
 | `main.parameters.json` | ARM-JSON params with `${AZURE_ENV_NAME}` / `${WEBIQ_API_KEY}` / `${WEBIQ_CUSTOM_DOMAIN}` / `${WEBIQ_BIND_CERT}` / `${WEBIQ_MIN_REPLICAS}` / `${WEBIQ_MONTHLY_BUDGET}` placeholders azd substitutes. |
 
 ### azd environment variables
@@ -124,7 +132,7 @@ azd env set AZURE_LOCATION        eastus2
 azd env set WEBIQ_API_KEY         <key>     # becomes a Container App secret
 azd env set WEBIQ_CUSTOM_DOMAIN   webiq.isainative.dev   # optional
 azd env set WEBIQ_BIND_CERT       true                    # phase 2 of custom domain
-azd env set WEBIQ_MIN_REPLICAS    1                       # optional, default 1 (warm). 0 = scale to zero
+azd env set WEBIQ_MIN_REPLICAS    0                       # optional, default 0 (scale-to-zero). 1 = keep one warm replica
 azd env set WEBIQ_MONTHLY_BUDGET  50                      # optional, default 50 — cost-budget amount (billing currency)
 ```
 
@@ -133,18 +141,29 @@ azd env set WEBIQ_MONTHLY_BUDGET  50                      # optional, default 50
 
 ## Deploy / redeploy
 
-> ⚠️ For Container Apps + ACR with a managed identity, always run **`azd provision` and
-> `azd deploy` as separate steps** (not `azd up`), with the AcrPull RBAC propagation gate
-> between them. See [pre-deploy checklist] behavior in the gotchas doc.
+Infra and the app image are deployed by **separate mechanisms**: `azd provision` owns the
+infrastructure, GitHub Actions owns the image (build → push to **ghcr.io** → roll the app).
 
 ```bash
+# 1. Infra (owner, out-of-band) — idempotent
 azd auth login --tenant-id 347ef3c8-1f54-41d9-b57d-22a4923cb3c4   # MSA → see gotchas
-azd provision   # infra (idempotent)
-azd deploy      # build image → push to ACR → roll the app (~40-60s)
+azd provision
+
+# 2. Image — normally CI on push to main; by hand:
+IMAGE=ghcr.io/webmaxru/webiq-demo
+echo $GHCR_TOKEN | docker login ghcr.io -u <user> --password-stdin   # PAT: write:packages
+docker build -t $IMAGE:latest . && docker push $IMAGE:latest
+APP=$(az containerapp list -g rg-webiq-demo --query "[?tags.\"azd-service-name\"=='app'].name | [0]" -o tsv)
+az containerapp update -n $APP -g rg-webiq-demo --image $IMAGE:latest   # roll (~40-60s)
 ```
 
-- **Code-only change:** `azd deploy` alone.
-- **Infra change:** `azd provision` then `azd deploy`.
+> **One-time:** make the `ghcr.io/webmaxru/webiq-demo` package **Public** (repo → *Packages*
+> → *Package settings* → *Change visibility*). A public package is what lets the Container
+> App pull the image with **no registry credentials** — keeping the registry free and
+> credential-less. Until it is public, `az containerapp update` will fail to pull the image.
+
+- **Code-only change:** push to `main` (CI builds/pushes/rolls), or run the image steps above.
+- **Infra change:** `azd provision` (then let CI redeploy the image, or run the image steps).
 - **Tear down everything:** `azd down --force --purge`.
 
 ## CI/CD (GitHub Actions)
@@ -155,22 +174,23 @@ two-job pipeline:
 | Job | Triggers | What it does |
 |-----|----------|--------------|
 | `validate` | push + PR to `main` | `npm ci` → `typecheck` → `lint` → `build` |
-| `deploy` | push to `main` + manual `workflow_dispatch` | `azd env refresh` (read-only — pull infra outputs) → `azd deploy` (build image on ACR, roll the Container App) |
+| `deploy` | push to `main` + manual `workflow_dispatch` | build image → push to **ghcr.io** (via `GITHUB_TOKEN`) → OIDC login to Azure → `az containerapp update` rolls the Container App onto the new image |
 
-- **Minimal by design:** CI only ever runs a **code deploy** — it never provisions or mutates
-  infrastructure. Infra stays an out-of-band, owner-run step (`azd provision`), so the CI
-  identity is granted **Contributor only**.
-- **Secret-less auth (OIDC / federated):** `azd pipeline config` created a user-assigned
+- **Minimal by design:** CI only ever runs a **code/image deploy** — it never provisions or
+  mutates infrastructure. Infra stays an out-of-band, owner-run step (`azd provision`), so the
+  CI identity is granted **Contributor only**.
+- **Free image registry:** the image is pushed to **GitHub Container Registry (ghcr.io)** with
+  the workflow's built-in `GITHUB_TOKEN` (`packages: write`) — no ACR, no registry secret.
+- **Secret-less Azure auth (OIDC / federated):** `azd pipeline config` created a user-assigned
   managed identity (`msi-webiq-demo`, in `rg-webiq-demo-msi`) with federated credentials for
-  `main` and PRs, and set the GitHub **repository variables** `AZURE_CLIENT_ID`,
-  `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_ENV_NAME`, `AZURE_LOCATION`,
-  `AZURE_RESOURCE_GROUP` (+ `WEBIQ_*`). The Web IQ key lives as the encrypted Actions secret
-  `WEBIQ_API_KEY` (used only so `azd env refresh` can resolve the template params).
+  `main` and PRs; the workflow signs in with `azure/login@v2` using the GitHub **repository
+  variables** `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
+  `AZURE_RESOURCE_GROUP` (+ `AZURE_ENV_NAME`, `AZURE_LOCATION`).
 - **Doc/markdown-only** pushes are skipped (`paths-ignore`) so they never trigger a deploy.
 - **Manual run:** Actions → *Deploy to Azure* → *Run workflow*, or
   `gh workflow run "Deploy to Azure" --ref main`.
 
-> Re-create the pipeline auth from scratch with:
+> Re-create the Azure pipeline auth from scratch with:
 > `azd pipeline config --provider github --auth-type federated --principal-role Contributor`
 
 ## Health, logs, scaling
@@ -178,7 +198,7 @@ two-job pipeline:
 - Health: `GET /api/health` → `{ status:'ok', keyConfigured, auth, node }`. Used by the
   Container App liveness/readiness probes (`/api/health` on the target port).
 - Logs: Log Analytics (`ContainerAppConsoleLogs_CL` / `ContainerAppSystemLogs_CL`).
-- Scale: HTTP rule, `concurrentRequests: 50`, `minReplicas 1` (warm; set `WEBIQ_MIN_REPLICAS 0` to scale to zero), `maxReplicas 3`.
+- Scale: HTTP rule, `concurrentRequests: 50`, `minReplicas 0` (scale-to-zero; set `WEBIQ_MIN_REPLICAS 1` to keep one warm replica), `maxReplicas 3`.
 
 ## Monitoring & telemetry (Application Insights)
 
@@ -225,7 +245,8 @@ Full walkthrough (Cloudflare DNS, proxy, SSL mode, the issuance gotchas) in
 
 ## Container build (`Dockerfile`)
 
-Multi-stage, **build context = repo root**:
+Multi-stage, **build context = repo root**. Built and pushed to **ghcr.io** by CI
+(`docker/build-push-action`), not by azd/ACR:
 1. `node:22-alpine` build stage → `npm ci` → copy sources → `npm run build` (server tsc +
    web vite). Produces `server/dist` and `web/dist`.
 2. `node:22-alpine` runtime stage → `npm ci --omit=dev`, copy `server/dist` + `web/dist`,
