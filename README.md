@@ -170,6 +170,8 @@ amount. Note: budgets carry **no currency** — `50` is in the subscription's bi
 ### Prerequisites
 - [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd) (for infra) and Docker (to build/push the image).
 - An Azure subscription.
+- A GitHub Actions repository secret named `WEBIQ_API_KEY`. Deployments sync this
+  encrypted value into ACA and run one authentication smoke test.
 
 ### One-time deploy
 
@@ -182,6 +184,10 @@ azd env set AZURE_LOCATION eastus2
 azd env set WEBIQ_API_KEY <your-web-iq-key>
 azd provision                        # deploy infra/main.bicep (~3-5 min)
 ```
+
+Keep the local/azd value and the GitHub `WEBIQ_API_KEY` repository secret in sync when
+rotating the key. Bicep uses the azd value during provisioning; application deployments
+reapply the GitHub secret before creating the new ACA revision.
 
 **2. Deploy both applications** — push to `main`. GitHub Actions builds/pushes the
 backend image, rolls ACA, builds the frontend with ACA's generated URL, and uploads

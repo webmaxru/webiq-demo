@@ -193,6 +193,9 @@ two-job pipeline:
   in GitHub. The OIDC identity retains **Contributor**.
 - **Free image registry:** the image is pushed to **GitHub Container Registry (ghcr.io)** with
   the workflow's built-in `GITHUB_TOKEN` (`packages: write`) — no ACR, no registry secret.
+- **Web IQ key rotation:** the encrypted `WEBIQ_API_KEY` repository secret is synced into
+  the ACA secret before every revision, followed by a live authentication smoke test.
+  Keep it synchronized with `.env` and the azd environment value used by Bicep.
 - **Secret-less Azure auth (OIDC / federated):** `azd pipeline config` created a user-assigned
   managed identity (`msi-webiq-demo`, in `rg-webiq-demo-msi`) with federated credentials for
   `main` and PRs; the workflow signs in with `azure/login@v2` using the GitHub **repository

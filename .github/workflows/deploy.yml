@@ -60,6 +60,7 @@ jobs:
       AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
       AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      WEBIQ_API_KEY: ${{ secrets.WEBIQ_API_KEY }}
       # ghcr.io/<owner>/<repo>, lowercased — the free registry that replaced ACR.
       IMAGE: ghcr.io/${{ github.repository }}
     steps:
@@ -132,15 +133,44 @@ jobs:
 
       - name: Roll the Container App onto the new image
         # Updating the immutable image tag creates a revision while preserving
-        # scale-to-zero, secrets, CORS configuration, and monitoring settings.
+        # scale-to-zero, CORS configuration, and monitoring settings. Sync the
+        # encrypted repository key first so a rotated key reaches the new revision.
         run: |
           APP_NAME="${{ steps.hosting.outputs.app_name }}"
+          if [ -z "$WEBIQ_API_KEY" ]; then
+            echo "::error::The WEBIQ_API_KEY repository secret is not configured."
+            exit 1
+          fi
+          az containerapp secret set \
+            --name "$APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --secrets "webiq-api-key=$WEBIQ_API_KEY" \
+            --only-show-errors \
+            >/dev/null
           echo "Rolling $APP_NAME to ${IMAGE}:${GITHUB_SHA}"
           az containerapp update \
             --name "$APP_NAME" \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --image "${IMAGE}:${GITHUB_SHA}" \
             --only-show-errors
+
+      - name: Verify backend authentication
+        run: |
+          RESPONSE_FILE=$(mktemp)
+          STATUS=$(curl \
+            --silent \
+            --show-error \
+            --max-time 120 \
+            --output "$RESPONSE_FILE" \
+            --write-out "%{http_code}" \
+            --header "Content-Type: application/json" \
+            --data '{"input":"Microsoft Web IQ","params":{"maxResults":1}}' \
+            "${{ steps.hosting.outputs.api_url }}/api/search/web")
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Backend Web IQ authentication check failed with HTTP $STATUS."
+            jq -r '.error | "class=\(.class) code=\(.errorCode) message=\(.message)"' "$RESPONSE_FILE"
+            exit 1
+          fi
 
       - uses: actions/setup-node@v4
         with:

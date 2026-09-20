@@ -188,6 +188,9 @@ ARM REST with azd's token. Three traps, all learned the hard way:
 ## H. Secrets & git hygiene
 
 - `.env` (real `WEBIQ_API_KEY`) is **gitignored**; azd auto-creates `.azure/.gitignore` that ignores the whole `.azure/` folder (incl. its env secret file).
+- GitHub Actions also stores `WEBIQ_API_KEY` as an encrypted repository secret. The deploy
+  workflow syncs it into ACA before rolling a revision and verifies it with one live
+  search. When rotating, update `.env`, the azd environment, and the GitHub secret.
 - **Before every commit**, scan staged files for the key value (read it from `.env`, `String.Contains` over each staged file). Confirm 0 hits. The verification ID for the custom domain is a **public** ownership token — safe to commit; the API key is not.
 - The repo is **public** on GitHub (`webmaxru/webiq-demo`). Never commit `.env`, `.azure/`, or any real key.
 
