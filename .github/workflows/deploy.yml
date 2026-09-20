@@ -88,6 +88,54 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Validate Web IQ key in the new image
+        run: |
+          if [ -z "$WEBIQ_API_KEY" ]; then
+            echo "::error::The WEBIQ_API_KEY repository secret is not configured."
+            exit 1
+          fi
+
+          docker pull "${IMAGE}:${GITHUB_SHA}"
+          CONTAINER_ID=$(docker run \
+            --detach \
+            --rm \
+            --env WEBIQ_API_KEY \
+            --publish 127.0.0.1:18080:8080 \
+            "${IMAGE}:${GITHUB_SHA}")
+          RESPONSE_FILE=$(mktemp)
+          cleanup() {
+            docker rm --force "$CONTAINER_ID" >/dev/null 2>&1 || true
+            rm --force "$RESPONSE_FILE"
+          }
+          trap cleanup EXIT
+
+          for attempt in {1..30}; do
+            if curl --silent --fail http://127.0.0.1:18080/api/health >/dev/null; then
+              break
+            fi
+            if [ "$attempt" = "30" ]; then
+              echo "::error::The candidate API image did not become healthy."
+              docker logs "$CONTAINER_ID"
+              exit 1
+            fi
+            sleep 1
+          done
+
+          STATUS=$(curl \
+            --silent \
+            --show-error \
+            --max-time 120 \
+            --output "$RESPONSE_FILE" \
+            --write-out "%{http_code}" \
+            --header "Content-Type: application/json" \
+            --data '{"input":"Microsoft Web IQ","params":{"maxResults":1}}' \
+            http://127.0.0.1:18080/api/search/web)
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::The WEBIQ_API_KEY repository secret failed authentication with HTTP $STATUS."
+            jq -r '.error | "class=\(.class) code=\(.errorCode) message=\(.message)"' "$RESPONSE_FILE"
+            exit 1
+          fi
+
       - name: Sign in to Azure (OIDC, federated — no secret)
         uses: azure/login@v2
         with:
@@ -137,10 +185,6 @@ jobs:
         # encrypted repository key first so a rotated key reaches the new revision.
         run: |
           APP_NAME="${{ steps.hosting.outputs.app_name }}"
-          if [ -z "$WEBIQ_API_KEY" ]; then
-            echo "::error::The WEBIQ_API_KEY repository secret is not configured."
-            exit 1
-          fi
           az containerapp secret set \
             --name "$APP_NAME" \
             --resource-group "$AZURE_RESOURCE_GROUP" \
@@ -154,7 +198,7 @@ jobs:
             --image "${IMAGE}:${GITHUB_SHA}" \
             --only-show-errors
 
-      - name: Verify backend authentication
+      - name: Verify deployed backend authentication
         run: |
           RESPONSE_FILE=$(mktemp)
           STATUS=$(curl \
