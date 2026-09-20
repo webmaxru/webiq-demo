@@ -108,7 +108,7 @@ All configuration is via environment variables (see [`.env.example`](./.env.exam
 | --- | --- | --- | --- |
 | `WEBIQ_API_KEY` | **yes** | — | Your Web IQ API key. Kept server-side only. |
 | `PORT` | no | `3001` | Backend HTTP port. |
-| `WEB_ORIGIN` | no | `http://localhost:5173` | Allowed CORS origin (the web app). |
+| `WEB_ORIGIN` / `WEB_ORIGINS` | no | `http://localhost:5173` | Allowed CORS origin, or comma-separated origins. Bicep injects the SWA origins in Azure. |
 | `WEBIQ_TIMEOUT_MS` | no | `15000` | Per-request SDK timeout (wall-clock budget incl. retries). |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | no | — | App Insights telemetry + abuse events. Injected automatically in Azure; unset ⇒ disabled. |
 | `WEBIQ_ANON_SALT` | no | built-in | Salt for the anonymised visitor id used in engagement stats. |
@@ -137,26 +137,26 @@ Stop with `npm run docker:down`.
 
 ---
 
-## Deploy to Azure (Container Apps)
+## Deploy to Azure (Static Web Apps + Container Apps)
 
-This repo is deploy-ready for **Azure Container Apps**. Infrastructure is provisioned with
-the **Azure Developer CLI (`azd provision`)** + **Bicep**; the container image is built and
-published to **GitHub Container Registry (ghcr.io)** — free for this public repo, no Azure
-Container Registry — by **GitHub Actions**, which then rolls the Container App onto the new
-image. It runs a **single container** (the Express server serves both the API and the built
-SPA) on a **Consumption** Container Apps environment. By default it **scales to zero when
-idle** (`minReplicas: 0`) so idle compute costs **$0**; the trade-off is a brief cold start
-on the first request after a quiet period. Set `WEBIQ_MIN_REPLICAS 1` to keep one warm
-replica instead (no cold start, billed at the reduced Container Apps **idle** rate).
+Production is split into two services:
 
-**What gets created:** 1 Container Apps environment (Consumption), 1 Container App
-(0.25 vCPU / 0.5 GiB, scale 0→3), 1 Log Analytics workspace, 1 Application Insights.
-The image lives in **ghcr.io** (free), not ACR. `WEBIQ_API_KEY` is stored as a Container
-App **secret**.
+- **Azure Static Web Apps Free tier** serves the React/Vite frontend.
+- **Azure Container Apps Consumption** serves only the Express API and defaults to
+  `minReplicas: 0`, so no backend replicas run while idle.
 
-**Idle cost:** scale-to-zero compute **$0** · Consumption env **$0** base · Log Analytics
-within free tier · **ghcr.io $0** (public package) → **~$0/mo idle**. Keeping one warm
-replica (`WEBIQ_MIN_REPLICAS 1`) adds **~$4–5/mo** (idle rates). See
+The browser calls ACA through `VITE_API_BASE_URL`; the API key remains in an ACA secret.
+Bicep configures ACA CORS for the generated SWA hostname and, when configured, the
+frontend custom domain. If an API call is still pending after five seconds, the UI
+displays an accessible “Application is starting” notice for the cold start.
+
+**What gets created:** 1 Free-tier Static Web App, 1 Consumption Container Apps
+environment, 1 API-only Container App (0.25 vCPU / 0.5 GiB, scale 0→3), Log Analytics,
+and Application Insights. The backend image lives in public **ghcr.io**, not ACR.
+
+**Idle hosting cost:** SWA Free **$0** · ACA scale-to-zero compute **$0** · Consumption
+environment **$0** base · public ghcr.io package **$0**. Active requests, bandwidth, and
+telemetry can still incur usage charges. See
 [docs/deployment.md](./docs/deployment.md#cost-model).
 
 **Spend alerts:** a subscription-scoped Cost Management **budget** (`WEBIQ_MONTHLY_BUDGET`,
@@ -171,7 +171,7 @@ amount. Note: budgets carry **no currency** — `50` is in the subscription's bi
 
 ### One-time deploy
 
-**1. Provision the infrastructure** (Container Apps env + app + monitoring — no image yet):
+**1. Provision the infrastructure** (SWA + ACA + monitoring):
 
 ```bash
 azd auth login                       # sign in to your Azure account
@@ -181,38 +181,33 @@ azd env set WEBIQ_API_KEY <your-web-iq-key>
 azd provision                        # deploy infra/main.bicep (~3-5 min)
 ```
 
-**2. Build, push, and roll the image** — normally done automatically by GitHub Actions on
-every push to `main` (`.github/workflows/deploy.yml`). To do it by hand:
-
-```bash
-IMAGE=ghcr.io/<owner>/webiq-demo
-echo $GHCR_TOKEN | docker login ghcr.io -u <owner> --password-stdin   # PAT with write:packages
-docker build -t $IMAGE:latest .
-docker push $IMAGE:latest
-az containerapp update -n <app-name> -g rg-webiq-demo --image $IMAGE:latest
-```
+**2. Deploy both applications** — push to `main`. GitHub Actions builds/pushes the
+backend image, rolls ACA, builds the frontend with ACA's generated URL, and uploads
+`web/dist` to SWA.
 
 > **One-time:** make the `ghcr.io/<owner>/webiq-demo` package **Public** (repo → Packages →
 > package → *Package settings* → *Change visibility*) so the Container App can pull it with
 > no registry credentials. That's what keeps the registry **free** and credential-less.
 
-`azd provision` exports the public URL as `WEBIQ_APP_URL`. Redeploy app changes by pushing
-to `main` (or re-running the manual steps above); tear everything down with `azd down`.
+`azd provision` exports the frontend URL as `WEBIQ_APP_URL` and the API URL as
+`WEBIQ_BACKEND_URL`. Redeploy code by pushing to `main`; tear everything down with
+`azd down`.
 
 > The deployment plan, architecture, and cost rationale live in
 > [`.azure/deployment-plan.md`](./.azure/deployment-plan.md).
 
 ### Files
-- [`azure.yaml`](./azure.yaml) — provision-only azd config (infra, no service/registry).
-- [`Dockerfile`](./Dockerfile) — multi-stage build → one image serving API + SPA.
-- [`infra/`](./infra) — Bicep: Container Apps env, Log Analytics, App Insights, the app.
+- [`azure.yaml`](./azure.yaml) — provision-only azd configuration.
+- [`Dockerfile`](./Dockerfile) — API-only ACA image.
+- [`web/public/staticwebapp.config.json`](./web/public/staticwebapp.config.json) — SPA fallback copied into the SWA artifact.
+- [`infra/`](./infra) — Bicep for SWA, ACA, telemetry, and monitoring.
 
 ### Custom domain
 
-To serve the app on your own domain (e.g. `webiq.example.com`) with a **free
-Azure-managed TLS certificate**, set the `WEBIQ_CUSTOM_DOMAIN` azd variable and add the
-required DNS records, then `azd provision`. A full walkthrough — including
-**Cloudflare** DNS, proxy (orange vs. grey cloud), and SSL/TLS mode guidance — is in
+For the public site, point the Cloudflare CNAME to the generated
+`*.azurestaticapps.net` hostname, set `WEBIQ_FRONTEND_CUSTOM_DOMAIN`, and provision again.
+Static Web Apps supplies the TLS certificate. `WEBIQ_CUSTOM_DOMAIN` now applies only to
+an optional dedicated ACA API hostname. See
 [`docs/custom-domain.md`](./docs/custom-domain.md).
 
 ---

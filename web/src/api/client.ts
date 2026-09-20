@@ -8,8 +8,18 @@ import type { MetaResponse, SearchResponse } from '../types/meta';
 export type ParamValue = string | number | boolean | string[];
 export type ParamsMap = Record<string, ParamValue>;
 
+function getApiBaseUrl(): string {
+  const configured = import.meta.env.VITE_API_BASE_URL?.trim();
+  return configured ? configured.replace(/\/+$/, '') : '';
+}
+
+function apiUrl(pathname: string): string {
+  const baseUrl = getApiBaseUrl();
+  return baseUrl ? `${baseUrl}${pathname}` : pathname;
+}
+
 export async function getMeta(): Promise<MetaResponse> {
-  const response = await fetch('/api/meta');
+  const response = await fetch(apiUrl('/api/meta'));
 
   if (!response.ok) {
     throw new Error(`Unable to load API metadata (${response.status})`);
@@ -33,7 +43,7 @@ export async function runSearch(
     headers[ANALYTICS_OPT_OUT_HEADER] = ANALYTICS_OPT_OUT_VALUE;
   }
 
-  const response = await fetch(`/api/search/${encodeURIComponent(endpointId)}`, {
+  const response = await fetch(apiUrl(`/api/search/${encodeURIComponent(endpointId)}`), {
     method: 'POST',
     headers,
     body: JSON.stringify({ input, params }),

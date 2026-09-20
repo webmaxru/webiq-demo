@@ -42,7 +42,9 @@ export default function App() {
   const [response, setResponse] = useState<SearchResponse>();
   const [lastRequest, setLastRequest] = useState<LastRequest>();
   const [loading, setLoading] = useState(false);
+  const [appStarting, setAppStarting] = useState(false);
   const abortRef = useRef<AbortController>();
+  const startupTimerRef = useRef<number | undefined>();
 
   const selectedEndpoint = useMemo(
     () => meta?.endpoints.find((endpoint) => endpoint.id === selectedId),
@@ -51,6 +53,11 @@ export default function App() {
 
   const applyEndpoint = useCallback((endpoint: EndpointMeta) => {
     abortRef.current?.abort();
+    if (startupTimerRef.current) {
+      window.clearTimeout(startupTimerRef.current);
+      startupTimerRef.current = undefined;
+    }
+    setAppStarting(false);
     setView('endpoint');
     setSelectedId(endpoint.id);
     setInput(endpointInputDefault(endpoint));
@@ -62,12 +69,23 @@ export default function App() {
 
   const selectHome = useCallback(() => {
     abortRef.current?.abort();
+    if (startupTimerRef.current) {
+      window.clearTimeout(startupTimerRef.current);
+      startupTimerRef.current = undefined;
+    }
+    setAppStarting(false);
     setView('home');
     setLoading(false);
   }, []);
 
   useEffect(() => {
     let mounted = true;
+    const startupTimer = window.setTimeout(() => {
+      if (mounted && startupTimerRef.current === startupTimer) {
+        setAppStarting(true);
+      }
+    }, 5000);
+    startupTimerRef.current = startupTimer;
 
     getMeta()
       .then((nextMeta) => {
@@ -81,10 +99,21 @@ export default function App() {
         if (mounted) {
           setMetaError(error instanceof Error ? error.message : 'Unable to load API metadata.');
         }
+      })
+      .finally(() => {
+        if (mounted && startupTimerRef.current === startupTimer) {
+          window.clearTimeout(startupTimer);
+          startupTimerRef.current = undefined;
+          setAppStarting(false);
+        }
       });
 
     return () => {
       mounted = false;
+      window.clearTimeout(startupTimer);
+      if (startupTimerRef.current === startupTimer) {
+        startupTimerRef.current = undefined;
+      }
       abortRef.current?.abort();
     };
   }, []);
@@ -121,6 +150,17 @@ export default function App() {
     setLoading(true);
     setResponse(undefined);
     setLastRequest(request);
+    setAppStarting(false);
+
+    if (startupTimerRef.current) {
+      window.clearTimeout(startupTimerRef.current);
+    }
+    const startupTimer = window.setTimeout(() => {
+      if (startupTimerRef.current === startupTimer) {
+        setAppStarting(true);
+      }
+    }, 5000);
+    startupTimerRef.current = startupTimer;
 
     try {
       const nextResponse = await runSearch(selectedEndpoint.id, request.input, request.params, controller.signal);
@@ -137,6 +177,12 @@ export default function App() {
         ),
       );
     } finally {
+      if (startupTimerRef.current === startupTimer) {
+        window.clearTimeout(startupTimer);
+        startupTimerRef.current = undefined;
+        setAppStarting(false);
+      }
+
       if (abortRef.current === controller) {
         setLoading(false);
         abortRef.current = undefined;
@@ -146,7 +192,12 @@ export default function App() {
 
   const cancel = () => {
     abortRef.current?.abort();
+    if (startupTimerRef.current) {
+      window.clearTimeout(startupTimerRef.current);
+      startupTimerRef.current = undefined;
+    }
     setLoading(false);
+    setAppStarting(false);
   };
 
   const telemetry = response?.ok ? response.telemetry : response?.telemetry;
@@ -172,6 +223,15 @@ export default function App() {
           {metaError ? (
             <div className="border border-red-200 bg-red-50 p-4 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
               {metaError}
+            </div>
+          ) : null}
+          {appStarting ? (
+            <div
+              aria-live="polite"
+              className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200"
+              role="status"
+            >
+              Application is starting. The backend has been idle and may need a few more seconds to respond.
             </div>
           ) : null}
           {view === 'home' ? (

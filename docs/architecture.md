@@ -15,9 +15,10 @@ SDK.
         ▲ renders forms/results          ▲ keeps WEBIQ_API_KEY server-side
 ```
 
-The browser never sees the API key. In **production a single container** runs only the
-Express server, which **also serves the built SPA** (`web/dist`) on the same origin — so
-there is no CORS and no second service.
+The browser never sees the API key. In production, Azure Static Web Apps serves the
+compiled SPA from its Free tier. The browser calls the ACA-hosted Express API through
+`VITE_API_BASE_URL`; ACA restricts CORS to the generated SWA hostname and optional
+frontend custom domain. The API scales to zero while idle.
 
 ## Monorepo layout (npm workspaces)
 
@@ -25,10 +26,10 @@ there is no CORS and no second service.
 webiq-demo/
 ├─ package.json            # workspaces [server, web] + root scripts
 ├─ tsconfig.base.json      # shared strict TS config
-├─ Dockerfile              # multi-stage: build both → run server, serve SPA
+├─ Dockerfile              # multi-stage API-only ACA image
 ├─ docker-compose.yml      # local two-container dev (web + server)
-├─ azure.yaml              # azd config (provision-only; image ships via ghcr.io + CI)
-├─ infra/                  # Bicep IaC (Container Apps, Log Analytics, App Insights, cert)
+├─ azure.yaml              # azd provision-only configuration
+├─ infra/                  # Bicep IaC (Static Web Apps, ACA, monitoring)
 ├─ server/                 # Express + TypeScript backend (CommonJS)
 └─ web/                    # React + Vite + Tailwind frontend (ESM)
 ```
@@ -37,7 +38,7 @@ webiq-demo/
 
 | File | Responsibility |
 |------|----------------|
-| `src/index.ts` | Express bootstrap: starts App Insights first, `helmet` (tuned CSP), `trust proxy`, `express.json`, CORS (dev), per-IP rate limiters, mount `/api`, 404 JSON, prod static serve of `web/dist` + SPA fallback, telemetry flush on SIGTERM/SIGINT. |
+| `src/index.ts` | Express API bootstrap: starts App Insights first, `helmet` (tuned CSP), `trust proxy`, `express.json`, configured CORS, per-IP rate limiters, `/api` routes, JSON 404, and telemetry flush on SIGTERM/SIGINT. |
 | `src/appInsights.ts` | App Insights bootstrap (imported **first**). Auto-collects requests/dependencies/exceptions; helpers `trackEvent`/`trackException`/`trackMetric`, `clientIp`, `anonIdFor`, `flushAppInsights`. No-op when no connection string. |
 | `src/abuse.ts` | `trackAbuse(kind, req, details)` — logs to stdout + emits a `SandboxRateLimited` (rate-limit) or `SandboxAbuse` (oversized input/body) custom event via `trackEvent`. |
 | `src/env.ts` | Loads `.env` (tries several paths), exposes `{ apiKey, port, webOrigin, timeoutMs, keyConfigured, authMode, trustProxyHops, maxInputLength, rateLimit }`. |
@@ -78,7 +79,10 @@ Abuse signals (`rate_limit`, `input_too_long`, `payload_too_large`) are recorded
 | Output | `components/OutputTabs.tsx`, `ResultsPanel.tsx`, `results/*` (per-endpoint + `GenericCards` fallback), `RawJsonViewer.tsx`, `CodeSnippet.tsx`, `TelemetryPanel.tsx`, `ErrorBanner.tsx`, `ApiKeyBanner.tsx` |
 
 The UI has **no hard-coded knowledge of individual parameters**. It renders forms and
-result tabs **dynamically from `/api/meta`**.
+result tabs **dynamically from `/api/meta`**. Hosted API URLs resolve against
+`VITE_API_BASE_URL`; local development keeps using Vite's same-origin `/api` proxy. An
+initial metadata request or search still pending after five seconds displays an
+accessible “Application is starting” status.
 
 ## The extensibility model (core design)
 
@@ -103,7 +107,7 @@ enum name, used by codegen to render `EnumName.MEMBER`).
 |----------|----------|---------|---------|
 | `WEBIQ_API_KEY` | yes | — | Web IQ API key. Server-side only; a Container App secret in prod. |
 | `PORT` | no | `3001` (local), `8080` (container) | Backend HTTP port. |
-| `WEB_ORIGIN` | no | `http://localhost:5173` | CORS origin in dev. |
+| `WEB_ORIGIN` / `WEB_ORIGINS` | no | `http://localhost:5173` | One CORS origin or a comma-separated origin list. Bicep supplies the SWA origins in production. |
 | `WEBIQ_TIMEOUT_MS` | no | `15000` | Per-request SDK wall-clock budget (incl. retries). |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | no | — | App Insights telemetry. A Container App secret in prod; unset ⇒ telemetry disabled. |
 | `WEBIQ_ANON_SALT` | no | built-in | Salt for the anonymous visitor id used in engagement stats. |
@@ -117,9 +121,9 @@ Owner role (see [abuse-protection.md](./abuse-protection.md)).
 ## Build & run
 
 - **Local dev:** `npm run dev` → web on `:5173` (Vite proxies `/api` → `:3001`).
-- **Production image:** `Dockerfile` builds both workspaces, then runs only the server
-  with `NODE_ENV=production`, which serves the SPA. Single port `8080`.
-- **Deploy:** Azure Container Apps via `azd` — see [deployment.md](./deployment.md).
+- **Production backend:** `Dockerfile` builds and runs only the Express API on port `8080`.
+- **Production frontend:** Vite builds `web/dist`; GitHub Actions uploads it to SWA.
+- **Deploy:** Bicep/`azd` provisions SWA + ACA; GitHub Actions deploys both artifacts.
 
 ## Related docs
 

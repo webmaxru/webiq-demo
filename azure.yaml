@@ -3,9 +3,6 @@ name: webiq-demo
 metadata:
   template: webiq-demo@0.1.0
 
-# Provision-only azd. `azd provision` deploys infra/main.bicep (Container Apps env, the
-# Container App, Log Analytics, App Insights, monitoring). There is intentionally NO
-# `services` block: the container image is built and pushed to GitHub Container Registry
-# (ghcr.io — free for this public repo, no Azure Container Registry) by GitHub Actions,
-# which then rolls the Container App to the new image with `az containerapp update`.
-# See .github/workflows/deploy.yml and docs/deployment.md.
+# Provision-only azd. `azd provision` creates the Free-tier Static Web App, the
+# scale-to-zero Container Apps backend, and monitoring. GitHub Actions deploys the
+# frontend artifact and the public ghcr.io backend image.

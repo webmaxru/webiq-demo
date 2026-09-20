@@ -1,7 +1,5 @@
 // Must be first: starts App Insights auto-instrumentation before http/express load.
 import { flushAppInsights } from './appInsights';
-import fs from 'node:fs';
-import path from 'node:path';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
@@ -32,7 +30,12 @@ app.use(
 );
 
 app.use(express.json({ limit: '1mb' }));
-app.use(cors({ origin: env.webOrigin, credentials: false }));
+app.use(
+  cors({
+    origin: env.webOrigins.length > 1 ? env.webOrigins : env.webOrigin,
+    credentials: false,
+  }),
+);
 
 // Per-IP throttling: a strict limiter on the expensive search endpoints plus a
 // looser limiter across the rest of the API (health is skipped inside it).
@@ -52,16 +55,6 @@ app.use('/api/*', (_req, res) => {
     },
   });
 });
-
-if (process.env.NODE_ENV === 'production') {
-  const webDist = path.resolve(__dirname, '..', '..', 'web', 'dist');
-  if (fs.existsSync(webDist)) {
-    app.use(express.static(webDist));
-    app.get('*', (_req, res) => {
-      res.sendFile(path.join(webDist, 'index.html'));
-    });
-  }
-}
 
 app.use(errorHandler);
 

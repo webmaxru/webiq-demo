@@ -11,12 +11,12 @@ official [`@microsoft/webiq`](https://www.npmjs.com/package/@microsoft/webiq) SD
 
 - **Monorepo** (npm workspaces): `server/` (Express + TS, **CommonJS**) and `web/`
   (React + Vite + Tailwind, **ESM**). Node ≥ 22, npm ≥ 10.
-- **Single combined container** in prod: the Express server serves the API **and** the
-  built SPA (`web/dist`) on one origin.
-- **Deployed** to Azure Container Apps (**scale-to-zero by default**, `minReplicas: 0`;
-  `WEBIQ_MIN_REPLICAS=1` to keep one warm replica). Infra via `azd provision` + Bicep; the
-  container image ships to **GitHub Container Registry (ghcr.io)** — free, no ACR — and is
-  rolled out by GitHub Actions. Live at https://webiq.isainative.dev.
+- **Split production hosting:** Azure Static Web Apps Free serves `web/dist`; Azure
+  Container Apps serves only `/api/*`.
+- **Backend scales to zero by default** (`minReplicas: 0`; `WEBIQ_MIN_REPLICAS=1` keeps
+  one warm replica). Infra comes from `azd provision` + Bicep; GitHub Actions deploys the
+  SWA artifact and rolls the public **ghcr.io** API image. Live at
+  https://webiq.isainative.dev.
 
 ## Conventions
 
@@ -34,8 +34,8 @@ official [`@microsoft/webiq`](https://www.npmjs.com/package/@microsoft/webiq) SD
 
 - [docs/architecture.md](../docs/architecture.md) — full solution architecture + extensibility model.
 - [docs/webiq-sdk.md](../docs/webiq-sdk.md) — `@microsoft/webiq` reference (endpoints, enums, errors, telemetry).
-- [docs/deployment.md](../docs/deployment.md) — Azure Container Apps deploy, resource names, cost model, azd env.
-- [docs/custom-domain.md](../docs/custom-domain.md) — Cloudflare → Container Apps custom domain + managed cert.
+- [docs/deployment.md](../docs/deployment.md) — SWA + ACA deployment, resource names, cost model, azd env.
+- [docs/custom-domain.md](../docs/custom-domain.md) — Cloudflare cutover from ACA to Static Web Apps.
 
 ---
 

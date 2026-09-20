@@ -19,6 +19,9 @@ param customDomain string = ''
 @description('Two-phase managed-cert flag (string from azd WEBIQ_BIND_CERT). "false"/empty = phase 1 (bind hostname as Disabled). "true" = phase 2 (issue cert + SniEnabled).')
 param bindCertificate string = 'false'
 
+@description('Optional custom domain for the Static Web Apps frontend (for example webiq.example.com). Supplied by azd from WEBIQ_FRONTEND_CUSTOM_DOMAIN after its CNAME points to the generated Static Web Apps hostname.')
+param frontendCustomDomain string = ''
+
 @description('Minimum always-running replicas (string from azd WEBIQ_MIN_REPLICAS). Empty/"0" (default) scales to zero — $0 idle compute, with a brief cold start on the first request after idle. "1" keeps one warm replica to avoid cold starts, billed at the reduced Container Apps idle rate (~$4–5/mo at 0.25 vCPU / 0.5 GiB after the free grant).')
 param minReplicas string = '0'
 
@@ -52,6 +55,7 @@ module resources './modules/resources.bicep' = {
     webiqApiKey: webiqApiKey
     customDomain: customDomain
     bindCertificate: toLower(bindCertificate) == 'true'
+    frontendCustomDomain: frontendCustomDomain
     // azd substitutes an unset WEBIQ_MIN_REPLICAS as '' — fall back to scale-to-zero.
     minReplicas: empty(minReplicas) ? 0 : int(minReplicas)
   }
@@ -116,7 +120,10 @@ output AZURE_RESOURCE_GROUP string = rg.name
 output AZURE_LOG_ANALYTICS_WORKSPACE_ID string = resources.outputs.logAnalyticsWorkspaceId
 output SERVICE_APP_NAME string = resources.outputs.containerAppName
 output SERVICE_APP_URI string = resources.outputs.containerAppUri
-output WEBIQ_APP_URL string = resources.outputs.containerAppUri
+output WEBIQ_BACKEND_URL string = resources.outputs.containerAppUri
+output WEBIQ_STATIC_WEB_APP_NAME string = resources.outputs.staticWebAppName
+output WEBIQ_STATIC_WEB_APP_URL string = resources.outputs.staticWebAppUri
+output WEBIQ_APP_URL string = resources.outputs.staticWebAppPublicUri
 output WEBIQ_CUSTOM_DOMAIN_URL string = resources.outputs.customDomainUrl
 output WEBIQ_APPLICATIONINSIGHTS_NAME string = resources.outputs.applicationInsightsName
 output WEBIQ_ABUSE_ALERT_NAME string = resources.outputs.abuseAlertName

@@ -35,11 +35,16 @@ function parseNonNegativeInt(value: string | undefined, fallback: number): numbe
 }
 
 const apiKey = process.env.WEBIQ_API_KEY?.trim() || undefined;
+const webOrigins = (process.env.WEB_ORIGIN || process.env.WEB_ORIGINS || 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 export const env = {
   apiKey,
   port: parseNumber(process.env.PORT, 3001),
-  webOrigin: process.env.WEB_ORIGIN?.trim() || 'http://localhost:5173',
+  webOrigin: webOrigins[0] || 'http://localhost:5173',
+  webOrigins,
   timeoutMs: parseNumber(process.env.WEBIQ_TIMEOUT_MS, 15000),
   keyConfigured: Boolean(apiKey),
   authMode: apiKey ? 'apiKey' : 'none',

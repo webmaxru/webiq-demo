@@ -1,11 +1,100 @@
-# Custom domain on Cloudflare → Azure Container Apps
+# Move the Cloudflare domain from ACA to Azure Static Web Apps
 
-This guide binds a custom domain (example: **`webiq.isainative.dev`**) to the
-Container App, using a **free Azure-managed TLS certificate**. DNS is hosted on
-**Cloudflare**.
+The public React frontend now belongs on **Azure Static Web Apps (SWA)**. The Container
+App remains the API origin on its generated `*.azurecontainerapps.io` hostname and scales
+to zero while idle.
 
-Azure validates domain ownership and issues the certificate via DNS, so the DNS
-records must exist **before** the certificate is provisioned.
+## Cut over `webiq.isainative.dev`
+
+### 1. Provision and deploy SWA before changing DNS
+
+Leave `WEBIQ_FRONTEND_CUSTOM_DOMAIN` empty for the first provision:
+
+```bash
+azd env set WEBIQ_FRONTEND_CUSTOM_DOMAIN ""
+azd provision
+gh workflow run "Deploy to Azure" --ref main
+```
+
+Get the generated frontend URL:
+
+```bash
+azd env get-value WEBIQ_STATIC_WEB_APP_URL
+```
+
+It has the form `https://<generated-name>.azurestaticapps.net`. Confirm that URL loads
+before changing Cloudflare.
+
+### 2. Change the Cloudflare record
+
+In Cloudflare → **isainative.dev** → **DNS**, edit the existing `webiq` record:
+
+| Setting | Old value | New value |
+|---------|-----------|-----------|
+| Type | `CNAME` | `CNAME` |
+| Name | `webiq` | `webiq` |
+| Target | `ca-webiq-demo-....azurecontainerapps.io` | `<generated-name>.azurestaticapps.net` |
+| Proxy status | DNS only | **DNS only (grey cloud)** |
+| TTL | Auto | Auto |
+
+Do not include `https://` or a path in the CNAME target. Remove any competing `A` or
+`AAAA` record for `webiq`. The old `asuid.webiq` TXT record belonged to ACA validation
+and can be removed after the SWA domain is healthy.
+
+Verify the public DNS answer:
+
+```bash
+nslookup -type=CNAME webiq.isainative.dev
+```
+
+### 3. Bind the hostname to SWA and update API CORS
+
+After the CNAME resolves to SWA:
+
+```bash
+azd env set WEBIQ_FRONTEND_CUSTOM_DOMAIN webiq.isainative.dev
+
+# The public hostname no longer belongs to ACA.
+azd env set WEBIQ_CUSTOM_DOMAIN ""
+azd env set WEBIQ_BIND_CERT false
+
+azd provision
+gh workflow run "Deploy to Azure" --ref main
+```
+
+The Bicep custom-domain resource uses CNAME delegation. SWA validates the record and
+provisions a free TLS certificate. The same provision adds both the generated SWA origin
+and `https://webiq.isainative.dev` to ACA's CORS allowlist.
+
+> `azd provision` applies ACA's bootstrap image, so rerun the deployment workflow after
+> every infrastructure provision to restore the application image and frontend artifact.
+
+### 4. Validate the cutover
+
+```bash
+curl -I https://webiq.isainative.dev
+curl https://ca-webiq-demo-wr3bqs.delightfulhill-9c37dc23.eastus2.azurecontainerapps.io/api/health
+```
+
+Open `https://webiq.isainative.dev`, run a request, and confirm the browser does not show
+a CORS error. After ACA has been idle, a request taking more than five seconds should
+show “Application is starting”.
+
+### 5. Optional Cloudflare proxy
+
+Keep the record **DNS only** until Azure reports the custom domain as validated and HTTPS
+works. You can then enable the orange-cloud proxy if desired and set Cloudflare
+**SSL/TLS encryption mode** to **Full (strict)**. Do not use Flexible mode.
+
+---
+
+## Optional dedicated custom domain for the ACA backend
+
+The remaining instructions apply only if the API itself needs a separate hostname such
+as `api.example.com`. The frontend does not require an ACA custom domain.
+
+Azure validates domain ownership and issues the certificate via DNS, so the DNS records
+must exist before the certificate is provisioned.
 
 ## Values for this deployment
 

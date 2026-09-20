@@ -1,11 +1,13 @@
 # Deployment & operations
 
-The app runs as a **single Azure Container App** (the Express server serves the API and
-the built SPA). Infrastructure is provisioned with the **Azure Developer CLI (`azd
-provision`)** and **Bicep**; the container image is built and published to **GitHub
-Container Registry (ghcr.io)** — free for this public repo, no Azure Container Registry — by
-**GitHub Actions**, which then rolls the app onto the new image. It **scales to zero when
-idle** by default, so an **idle app consumes ~$0**.
+Production uses two independently scalable Azure services:
+
+- **Azure Static Web Apps (Free)** hosts the React/Vite frontend.
+- **Azure Container Apps (Consumption)** hosts the Express API and scales 0→3.
+
+Infrastructure is provisioned with `azd provision` + Bicep. GitHub Actions publishes the
+public ghcr.io API image, rolls ACA, builds the SPA with ACA's URL, and uploads the static
+artifact to SWA. The frontend remains available while ACA has zero idle replicas.
 
 ## Live environment
 
@@ -22,6 +24,7 @@ idle** by default, so an **idle app consumes ~$0**.
 
 | Resource | Name | Notes |
 |----------|------|-------|
+| Static Web App | `swa-webiq-demo-wr3bqs` | **Free** tier, hosts the SPA |
 | Container App | `ca-webiq-demo-wr3bqs` | scale **0**→3 (scale-to-zero when idle), 0.25 vCPU / 0.5 GiB, system-assigned MI |
 | Container Apps Env | `cae-webiq-demo-wr3bqs` | **Consumption** (no idle base cost) |
 | Container image registry | `ghcr.io/webmaxru/webiq-demo` | **GitHub Container Registry** — free (public package), replaces ACR |
@@ -35,22 +38,23 @@ idle** by default, so an **idle app consumes ~$0**.
 
 ## Cost model
 
-The app defaults to **scale-to-zero** (`minReplicas: 0`): when no traffic arrives the
-Container App runs **zero replicas** and idle compute costs **$0**. The trade-off is a
-brief Container Apps **cold start** on the first request after a quiet period. The image is
-hosted on **GitHub Container Registry (ghcr.io)**, which is **free** for the public package
-— there is no Azure Container Registry, so its old ~$5/mo flat charge is gone.
+The frontend uses the SWA **Free** tier. The backend defaults to **scale-to-zero**
+(`minReplicas: 0`): when no API traffic arrives ACA runs zero replicas and idle compute
+costs **$0**. The trade-off is a brief cold start on the first API request after a quiet
+period; after five seconds the UI displays “Application is starting”. The public backend
+image remains on free GitHub Container Registry storage.
 
 | Resource | Monthly cost (idle) |
 |----------|---------------------|
+| Static Web Apps frontend (Free) | **$0** |
 | Container App compute (`minReplicas: 0`, scale-to-zero) | **$0** — no replicas run while idle |
 | Container Apps Environment (Consumption) | **$0** base |
 | Log Analytics | within free tier |
 | **GitHub Container Registry (ghcr.io)** | **$0** — free for public packages |
 
-**Estimated total ≈ $0/mo idle.** Only per-request compute (metered by the second, mostly
-inside the monthly free grant) and any Log Analytics overage are billed. Keeping one warm
-replica instead (`WEBIQ_MIN_REPLICAS 1`, see below) adds **~$4–5/mo**.
+**Estimated hosting compute ≈ $0/mo idle.** Active requests, network transfer, telemetry
+ingestion, and unrelated subscription resources can still incur usage charges. Keeping
+one warm backend replica (`WEBIQ_MIN_REPLICAS 1`) adds **~$4–5/mo**.
 
 ### Warm-replica math (East US 2, Consumption plan)
 
@@ -119,9 +123,9 @@ azd provision
 
 | File | Purpose |
 |------|---------|
-| `main.bicep` | Subscription-scoped entry: RG + `resources` module + a subscription-wide cost budget. Params: `environmentName`, `location`, `webiqApiKey` (secure), `customDomain`, `bindCertificate`, `minReplicas` (default 0 = scale-to-zero), `monthlyBudgetAmount`. |
-| `modules/resources.bicep` | Log Analytics, App Insights + engagement workbook, Container Apps env, the Container App (pulls its **public ghcr.io image** with no registry credentials), optional managed cert, the abuse alert (action group → Owner role + scheduled query rule), and the cost action group (→ Owner role) used by the budget. |
-| `main.parameters.json` | ARM-JSON params with `${AZURE_ENV_NAME}` / `${WEBIQ_API_KEY}` / `${WEBIQ_CUSTOM_DOMAIN}` / `${WEBIQ_BIND_CERT}` / `${WEBIQ_MIN_REPLICAS}` / `${WEBIQ_MONTHLY_BUDGET}` placeholders azd substitutes. |
+| `main.bicep` | Subscription entry: RG, resources module, and subscription budget. Includes separate backend and frontend custom-domain parameters. |
+| `modules/resources.bicep` | Free SWA frontend, Log Analytics, App Insights/workbook, Consumption ACA environment, API Container App, optional custom domains, abuse alert, and cost action group. |
+| `main.parameters.json` | Maps `AZURE_*` / `WEBIQ_*` azd environment values into Bicep parameters. |
 
 ### azd environment variables
 
@@ -130,8 +134,9 @@ azd env set AZURE_SUBSCRIPTION_ID d0b7d6ee-17bf-4c4f-b79d-4f6c2cb583fd
 azd env set AZURE_TENANT_ID       347ef3c8-1f54-41d9-b57d-22a4923cb3c4   # REQUIRED — see gotchas
 azd env set AZURE_LOCATION        eastus2
 azd env set WEBIQ_API_KEY         <key>     # becomes a Container App secret
-azd env set WEBIQ_CUSTOM_DOMAIN   webiq.isainative.dev   # optional
-azd env set WEBIQ_BIND_CERT       true                    # phase 2 of custom domain
+azd env set WEBIQ_FRONTEND_CUSTOM_DOMAIN webiq.isainative.dev # optional; set after its CNAME points to SWA
+azd env set WEBIQ_CUSTOM_DOMAIN   api.example.com         # optional ACA API hostname
+azd env set WEBIQ_BIND_CERT       true                    # phase 2 of an ACA API hostname
 azd env set WEBIQ_MIN_REPLICAS    0                       # optional, default 0 (scale-to-zero). 1 = keep one warm replica
 azd env set WEBIQ_MONTHLY_BUDGET  50                      # optional, default 50 — cost-budget amount (billing currency)
 ```
@@ -141,20 +146,16 @@ azd env set WEBIQ_MONTHLY_BUDGET  50                      # optional, default 50
 
 ## Deploy / redeploy
 
-Infra and the app image are deployed by **separate mechanisms**: `azd provision` owns the
-infrastructure, GitHub Actions owns the image (build → push to **ghcr.io** → roll the app).
+Infrastructure and code are deployed separately: `azd provision` owns SWA, ACA, and
+monitoring; GitHub Actions owns both application artifacts.
 
 ```bash
 # 1. Infra (owner, out-of-band) — idempotent
 azd auth login --tenant-id 347ef3c8-1f54-41d9-b57d-22a4923cb3c4   # MSA → see gotchas
 azd provision
 
-# 2. Image — normally CI on push to main; by hand:
-IMAGE=ghcr.io/webmaxru/webiq-demo
-echo $GHCR_TOKEN | docker login ghcr.io -u <user> --password-stdin   # PAT: write:packages
-docker build -t $IMAGE:latest . && docker push $IMAGE:latest
-APP=$(az containerapp list -g rg-webiq-demo --query "[?tags.\"azd-service-name\"=='app'].name | [0]" -o tsv)
-az containerapp update -n $APP -g rg-webiq-demo --image $IMAGE:latest   # roll (~40-60s)
+# 2. Backend + frontend — normally CI on push to main:
+gh workflow run "Deploy to Azure" --ref main
 ```
 
 > **One-time:** make the `ghcr.io/webmaxru/webiq-demo` package **Public** (repo → *Packages*
@@ -162,8 +163,9 @@ az containerapp update -n $APP -g rg-webiq-demo --image $IMAGE:latest   # roll (
 > App pull the image with **no registry credentials** — keeping the registry free and
 > credential-less. Until it is public, `az containerapp update` will fail to pull the image.
 
-- **Code-only change:** push to `main` (CI builds/pushes/rolls), or run the image steps above.
-- **Infra change:** `azd provision` (then let CI redeploy the image, or run the image steps).
+- **Code-only change:** push to `main` (CI deploys both applications).
+- **Infra change:** `azd provision`, then rerun the deployment workflow because Bicep
+  intentionally uses the public placeholder for ACA provisioning.
 - **Tear down everything:** `azd down --force --purge`.
 
 ## CI/CD (GitHub Actions)
@@ -174,11 +176,11 @@ two-job pipeline:
 | Job | Triggers | What it does |
 |-----|----------|--------------|
 | `validate` | push + PR to `main` | `npm ci` → `typecheck` → `lint` → `build` |
-| `deploy` | push to `main` + manual `workflow_dispatch` | build image → push to **ghcr.io** (via `GITHUB_TOKEN`) → OIDC login to Azure → `az containerapp update` rolls the Container App onto the new image |
+| `deploy` | push to `main` + manual `workflow_dispatch` | deploy API image to ACA, build with `VITE_API_BASE_URL`, upload `web/dist` to SWA |
 
-- **Minimal by design:** CI only ever runs a **code/image deploy** — it never provisions or
-  mutates infrastructure. Infra stays an out-of-band, owner-run step (`azd provision`), so the
-  CI identity is granted **Contributor only**.
+- **Minimal by design:** CI deploys code but does not create infrastructure. It obtains the
+  provisioned SWA deployment token through ARM at runtime; the masked token is not stored
+  in GitHub. The OIDC identity retains **Contributor**.
 - **Free image registry:** the image is pushed to **GitHub Container Registry (ghcr.io)** with
   the workflow's built-in `GITHUB_TOKEN` (`packages: write`) — no ACR, no registry secret.
 - **Secret-less Azure auth (OIDC / federated):** `azd pipeline config` created a user-assigned

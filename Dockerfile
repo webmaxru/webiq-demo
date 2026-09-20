@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 
-# ---- Build stage: build both workspaces (web SPA + server) ----
+# ---- Build stage: compile the API server only ----
+# The React frontend is built separately and hosted by Azure Static Web Apps.
 FROM node:22-alpine AS build
 WORKDIR /app
 
@@ -10,12 +11,11 @@ COPY server/package.json ./server/package.json
 COPY web/package.json ./web/package.json
 RUN npm ci
 
-# Copy sources and build (root script builds server then web)
+# Copy and build only the backend workspace.
 COPY server ./server
-COPY web ./web
-RUN npm run build
+RUN npm run build:server
 
-# ---- Runtime stage: server only, serving the API + built SPA ----
+# ---- Runtime stage: API server only ----
 FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
@@ -27,10 +27,8 @@ COPY server/package.json ./server/package.json
 COPY web/package.json ./web/package.json
 RUN npm ci --omit=dev && npm cache clean --force
 
-# Bring in compiled server and the static SPA bundle.
-# server/src/index.ts resolves the SPA at <serverDist>/../../web/dist => /app/web/dist
+# Bring in the compiled API server. No frontend assets are included in the ACA image.
 COPY --from=build /app/server/dist ./server/dist
-COPY --from=build /app/web/dist ./web/dist
 
 # Run as the built-in non-root node user
 USER node

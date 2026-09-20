@@ -40,11 +40,15 @@ param customDomain string = ''
 @description('Two-phase managed-cert flag. Phase 1 (false): bind the hostname as Disabled so Azure will allow the managed certificate to be created. Phase 2 (true): create the managed cert and switch the binding to SniEnabled. A single pass is impossible (cert needs the hostname; an SNI binding needs the cert).')
 param bindCertificate bool = false
 
+@description('Optional custom domain for the Azure Static Web Apps frontend. Its CNAME must point to the generated Static Web Apps hostname before provisioning with this value.')
+param frontendCustomDomain string = ''
+
 var resourceSuffix = take(uniqueString(subscription().id, environmentName, location), 6)
 var logAnalyticsName = take('log-${environmentName}-${resourceSuffix}', 63)
 var appInsightsName = take('appi-${environmentName}-${resourceSuffix}', 63)
 var containerEnvName = take('cae-${environmentName}-${resourceSuffix}', 32)
 var containerAppName = take('ca-${environmentName}-${resourceSuffix}', 32)
+var staticWebAppName = take('swa-${environmentName}-${resourceSuffix}', 60)
 var managedCertName = empty(customDomain) ? '' : take('mc-${replace(replace(customDomain, '.', '-'), '*', 'wild')}', 32)
 // Built-in Owner role definition ID. The abuse alert's action group uses an
 // ARM-role receiver, so Azure notifies the email registered on each account that
@@ -81,6 +85,28 @@ resource applicationInsights 'Microsoft.Insights/components@2020-02-02' = {
     IngestionMode: 'LogAnalytics'
     publicNetworkAccessForIngestion: 'Enabled'
     publicNetworkAccessForQuery: 'Enabled'
+  }
+}
+
+// The React frontend is hosted independently on the Azure Static Web Apps Free tier.
+resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = {
+  name: staticWebAppName
+  location: location
+  tags: union(tags, { 'webiq-component': 'frontend' })
+  sku: {
+    name: 'Free'
+    tier: 'Free'
+  }
+  properties: {}
+}
+
+// Add the public frontend hostname after its DNS CNAME points at the generated
+// *.azurestaticapps.net hostname. Static Web Apps provisions and renews TLS.
+resource staticWebAppCustomDomain 'Microsoft.Web/staticSites/customDomains@2023-12-01' = if (!empty(frontendCustomDomain)) {
+  parent: staticWebApp
+  name: frontendCustomDomain
+  properties: {
+    validationMethod: 'cname-delegation'
   }
 }
 
@@ -184,6 +210,12 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
               secretRef: 'appinsights-connection-string'
+            }
+            {
+              name: 'WEB_ORIGIN'
+              value: empty(frontendCustomDomain)
+                ? 'https://${staticWebApp.properties.defaultHostname}'
+                : 'https://${staticWebApp.properties.defaultHostname},https://${frontendCustomDomain}'
             }
           ]
           probes: [
@@ -462,6 +494,9 @@ resource abuseAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' 
 
 output containerAppName string = containerApp.name
 output containerAppUri string = 'https://${containerApp.properties.configuration.ingress.fqdn}'
+output staticWebAppName string = staticWebApp.name
+output staticWebAppUri string = 'https://${staticWebApp.properties.defaultHostname}'
+output staticWebAppPublicUri string = empty(frontendCustomDomain) ? 'https://${staticWebApp.properties.defaultHostname}' : 'https://${frontendCustomDomain}'
 output logAnalyticsWorkspaceId string = logAnalytics.id
 output customDomainUrl string = empty(customDomain) ? '' : 'https://${customDomain}'
 output applicationInsightsName string = applicationInsights.name

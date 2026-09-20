@@ -2,13 +2,9 @@ name: Deploy to Azure
 
 # Minimal CI/CD:
 #   - validate: typecheck + lint + build (runs on PRs and pushes)
-#   - deploy:   builds the container image, pushes it to GitHub Container Registry
-#     (ghcr.io — free for this public repo, replaces Azure Container Registry), then
-#     rolls the existing Azure Container App onto the new image with
-#     `az containerapp update`. Infrastructure is provisioned out-of-band by the owner
-#     with `azd provision` (see docs/deployment.md). Azure auth is OIDC/federated, so no
-#     long-lived cloud secrets are stored; the image is pushed with the built-in
-#     GITHUB_TOKEN.
+#   - deploy:   publishes and rolls the backend image from ghcr.io, then builds
+#     the frontend with the Container App URL and uploads it to the provisioned
+#     Azure Static Web Apps Free-tier resource.
 
 on:
   push:
@@ -50,7 +46,7 @@ jobs:
       - run: npm run build
 
   deploy:
-    name: Deploy (ghcr.io + Container Apps)
+    name: Deploy (Static Web Apps + Container Apps)
     needs: validate
     # Only deploy on a push to main or a manual run — never on pull requests.
     if: github.event_name != 'pull_request'
@@ -98,10 +94,8 @@ jobs:
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Roll the Container App onto the new image
-        # Find the app by its azd-service-name tag (set in infra/modules/resources.bicep)
-        # and update it to the immutable per-commit tag. `az containerapp update --image`
-        # creates a new revision, preserving scale (minReplicas), secrets and env.
+      - name: Discover Azure hosting resources
+        id: hosting
         run: |
           az extension add --name containerapp --upgrade --only-show-errors
           APP_NAME=$(az containerapp list \
@@ -111,9 +105,61 @@ jobs:
             echo "::error::No Container App tagged azd-service-name=app in $AZURE_RESOURCE_GROUP. Run 'azd provision' first."
             exit 1
           fi
+          API_HOST=$(az containerapp show \
+            --name "$APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          SWA_ID=$(az resource list \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --resource-type Microsoft.Web/staticSites \
+            --query "[?tags.\"webiq-component\"=='frontend'].id | [0]" -o tsv)
+          if [ -z "$SWA_ID" ]; then
+            echo "::error::No Static Web App tagged webiq-component=frontend in $AZURE_RESOURCE_GROUP. Run 'azd provision' first."
+            exit 1
+          fi
+          SWA_TOKEN=$(az rest \
+            --method post \
+            --url "https://management.azure.com${SWA_ID}/listSecrets?api-version=2023-12-01" \
+            --query properties.apiKey -o tsv)
+          if [ -z "$SWA_TOKEN" ]; then
+            echo "::error::Unable to obtain the Static Web Apps deployment token."
+            exit 1
+          fi
+          echo "::add-mask::$SWA_TOKEN"
+          echo "app_name=$APP_NAME" >> "$GITHUB_OUTPUT"
+          echo "api_url=https://$API_HOST" >> "$GITHUB_OUTPUT"
+          echo "SWA_DEPLOYMENT_TOKEN=$SWA_TOKEN" >> "$GITHUB_ENV"
+
+      - name: Roll the Container App onto the new image
+        # Updating the immutable image tag creates a revision while preserving
+        # scale-to-zero, secrets, CORS configuration, and monitoring settings.
+        run: |
+          APP_NAME="${{ steps.hosting.outputs.app_name }}"
           echo "Rolling $APP_NAME to ${IMAGE}:${GITHUB_SHA}"
           az containerapp update \
             --name "$APP_NAME" \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --image "${IMAGE}:${GITHUB_SHA}" \
             --only-show-errors
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Build frontend for the Container App API
+        env:
+          VITE_API_BASE_URL: ${{ steps.hosting.outputs.api_url }}
+        run: |
+          npm ci
+          npm run build:web
+
+      - name: Deploy frontend to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ env.SWA_DEPLOYMENT_TOKEN }}
+          action: upload
+          app_location: web/dist
+          output_location: .
+          skip_app_build: true
+          skip_api_build: true
