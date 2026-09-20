@@ -232,8 +232,10 @@ webiq-demo/
 │     ├─ validation.ts     # per-descriptor param validation/coercion
 │     ├─ contract.ts       # shared HTTP contract types
 │     ├─ endpoints/        # one descriptor per endpoint + registry
-│     ├─ routes/           # /api/meta, /api/health, /api/search/:id
+│     ├─ routes/           # /api/health, /api/search/:id
 │     └─ middleware/       # SDK error → structured HTTP mapping
+│  └─ scripts/
+│     └─ generateWebMeta.ts # emits static endpoint metadata for the web build
 └─ web/                    # React + Vite + Tailwind sandbox UI
    ├─ Dockerfile  nginx.conf  vite.config.ts  tailwind.config.js
    └─ src/
@@ -248,9 +250,10 @@ webiq-demo/
 
 1. The backend describes each endpoint as a **declarative descriptor** (its parameters,
    enums, ranges, and an `invoke` function that calls the SDK).
-2. `GET /api/meta` serves those descriptors (minus server-only fields).
-3. The frontend renders the **parameter form and result tabs dynamically** from that
-   metadata — so the UI has no hard-coded knowledge of individual parameters.
+2. Before web development, type-checking, or building, `generateWebMeta.ts` strips the
+   server-only invocation functions and writes a generated TypeScript module.
+3. Vite bundles that metadata into the SPA, so the sidebar and forms render immediately
+   without waking ACA. The UI still has no hard-coded knowledge of individual parameters.
 4. `POST /api/search/:endpointId` validates/coerces the params, calls the SDK with an
    abort/timeout budget, and returns `{ data, telemetry, snippet }` (or a structured
    error).
@@ -289,10 +292,11 @@ adapts automatically.
 
 2. **Register it** in `server/src/endpoints/registry.ts` (add to the array).
 
-3. That's it. The sidebar, parameter form, raw JSON, code snippet, and telemetry all work
-   immediately. Results render via the **generic card renderer** when `resultKey` points
-   at an array; for a bespoke layout, add `web/src/components/results/MyResults.tsx` and
-   map it in `ResultsPanel.tsx`.
+3. That's it. `npm run dev`, `npm run typecheck`, and `npm run build` regenerate the
+   bundled frontend metadata automatically. The sidebar, parameter form, raw JSON, code
+   snippet, and telemetry all work without a startup metadata request. Results render via
+   the **generic card renderer** when `resultKey` points at an array; for a bespoke layout,
+   add `web/src/components/results/MyResults.tsx` and map it in `ResultsPanel.tsx`.
 
 ---
 

@@ -5,9 +5,12 @@
   "type": "module",
   "description": "React + Vite sandbox UI for Web IQ.",
   "scripts": {
+    "predev": "npm --prefix .. run generate:web-meta",
     "dev": "vite",
+    "prebuild": "npm --prefix .. run generate:web-meta",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "pretypecheck": "npm --prefix .. run generate:web-meta",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

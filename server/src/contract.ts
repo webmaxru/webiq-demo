@@ -26,12 +26,6 @@ export interface EndpointMeta {
   params: ParamMeta[];
 }
 
-export interface MetaResponse {
-  endpoints: EndpointMeta[];
-  keyConfigured: boolean;
-  auth: 'apiKey' | 'none';
-}
-
 export interface TelemetryInfo {
   elapsedMs: number;
   statusCode?: number;

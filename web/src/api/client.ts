@@ -3,7 +3,7 @@ import {
   ANALYTICS_OPT_OUT_VALUE,
   isAnalyticsOptedOut,
 } from '../lib/analyticsConsent';
-import type { MetaResponse, SearchResponse } from '../types/meta';
+import type { SearchResponse } from '../types/meta';
 
 export type ParamValue = string | number | boolean | string[];
 export type ParamsMap = Record<string, ParamValue>;
@@ -16,16 +16,6 @@ function getApiBaseUrl(): string {
 function apiUrl(pathname: string): string {
   const baseUrl = getApiBaseUrl();
   return baseUrl ? `${baseUrl}${pathname}` : pathname;
-}
-
-export async function getMeta(): Promise<MetaResponse> {
-  const response = await fetch(apiUrl('/api/meta'));
-
-  if (!response.ok) {
-    throw new Error(`Unable to load API metadata (${response.status})`);
-  }
-
-  return response.json() as Promise<MetaResponse>;
 }
 
 export async function runSearch(

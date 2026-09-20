@@ -10,6 +10,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "generate:web-meta": "tsx scripts/generateWebMeta.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.json"

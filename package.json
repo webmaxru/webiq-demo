@@ -16,6 +16,7 @@
     "dev": "concurrently -k -n server,web -c blue,green \"npm:dev:server\" \"npm:dev:web\"",
     "dev:server": "npm run dev -w server",
     "dev:web": "npm run dev -w web",
+    "generate:web-meta": "npm run generate:web-meta -w server",
     "build": "npm run build:server && npm run build:web",
     "build:server": "npm run build -w server",
     "build:web": "npm run build -w web",

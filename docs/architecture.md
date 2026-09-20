@@ -44,15 +44,16 @@ webiq-demo/
 | `src/env.ts` | Loads `.env` (tries several paths), exposes `{ apiKey, port, webOrigin, timeoutMs, keyConfigured, authMode, trustProxyHops, maxInputLength, rateLimit }`. |
 | `src/webiqClient.ts` | Lazily constructs a singleton `WebIQClient`; holds the `SDK_ENUMS` registry + `resolveEnumValue`/`enumMemberName` helpers; `ConfigurationError`. |
 | `src/telemetry.ts` | `AsyncLocalStorage` that correlates the SDK `telemetryHook` events to the in-flight request; `runWithTelemetry`, `summarizeTelemetry`, `telemetryEventsFromError`. |
-| `src/contract.ts` | **The HTTP contract** (`ParamMeta`, `EndpointMeta`, `MetaResponse`, `TelemetryInfo`, `SearchSuccess`/`SearchFailure`). Mirrored verbatim by the frontend. |
+| `src/contract.ts` | **The HTTP contract** (`ParamMeta`, `EndpointMeta`, `TelemetryInfo`, `SearchSuccess`/`SearchFailure`). Mirrored verbatim by the frontend. |
 | `src/endpoints/types.ts` | `EndpointDescriptor` (extends `EndpointMeta` + `invoke`), `toMeta`, `buildSdkOptions`. |
 | `src/endpoints/*.ts` | One descriptor per endpoint (web, news, videos, images, browse, classic). |
 | `src/endpoints/registry.ts` | Ordered array of all descriptors + `getDescriptor(id)`. Single source of truth. |
+| `scripts/generateWebMeta.ts` | Build-time generator that strips server-only invocation functions and emits the web metadata module. It is not part of the API runtime build. |
 | `src/validation.ts` | `validateAndCoerce` — per-descriptor range/enum/url checks, type coercion, and input/string length caps (`maxInputLength`). |
 | `src/codegen.ts` | `generateSnippet` — builds copy-paste SDK TypeScript from a descriptor + user params. |
 | `src/middleware/rateLimit.ts` | Per-IP `express-rate-limit` limiters (strict `searchRateLimiter`, looser `generalRateLimiter`); the 429 handler records a `rate_limit` abuse event. |
 | `src/middleware/errorHandler.ts` | `toApiError` — maps SDK error classes → structured `{ httpStatus, info }`; the `errorHandler` records `payload_too_large` on 413 + tracks exceptions. |
-| `src/routes/meta.ts` | `GET /api/meta` (form schema), `GET /api/health`. |
+| `src/routes/health.ts` | `GET /api/health`; runtime status only. |
 | `src/routes/search.ts` | `POST /api/search/:endpointId` — input-length cap → validate → invoke (with abort + timeout) → `{ data, telemetry, snippet }`; emits the `SandboxSearch` / `SandboxRateLimited` App Insights events. |
 
 ### Request flow
@@ -74,15 +75,16 @@ Abuse signals (`rate_limit`, `input_too_long`, `payload_too_large`) are recorded
 | Area | Files |
 |------|-------|
 | Shell | `App.tsx` (state, run/abort, sticky-footer layout), `main.tsx`, `components/Header.tsx`, `components/Footer.tsx` |
-| API | `api/client.ts` (`getMeta`, `runSearch` with `AbortController`), `types/meta.ts` (mirrors `contract.ts`) |
+| API | `api/client.ts` (`runSearch` with `AbortController`), `types/meta.ts` (mirrors `contract.ts`) |
+| Generated data | `src/generated/endpointMeta.ts` (ignored; regenerated before dev/typecheck/build and bundled by Vite) |
 | Dynamic form | `components/ParameterForm.tsx` + `components/fields/{Text,Number,Boolean,Enum,MultiEnum}Field.tsx` |
 | Output | `components/OutputTabs.tsx`, `ResultsPanel.tsx`, `results/*` (per-endpoint + `GenericCards` fallback), `RawJsonViewer.tsx`, `CodeSnippet.tsx`, `TelemetryPanel.tsx`, `ErrorBanner.tsx`, `ApiKeyBanner.tsx` |
 
-The UI has **no hard-coded knowledge of individual parameters**. It renders forms and
-result tabs **dynamically from `/api/meta`**. Hosted API URLs resolve against
-`VITE_API_BASE_URL`; local development keeps using Vite's same-origin `/api` proxy. An
-initial metadata request or search still pending after five seconds displays an
-accessible “Application is starting” status.
+The UI has **no hard-coded knowledge of individual parameters**. Endpoint metadata is
+generated from the backend registry and bundled into the SPA, so the complete sidebar
+and forms render without a startup API request or ACA cold start. Hosted search calls
+resolve against `VITE_API_BASE_URL`; local development uses Vite's `/api` proxy. A search
+still pending after five seconds displays an accessible “Application is starting” status.
 
 ## The extensibility model (core design)
 
@@ -93,7 +95,8 @@ Every endpoint is a **declarative descriptor**. Adding a new Web IQ endpoint is 
    (`id`, `label`, `description`, `kind`, `inputLabel`, `inputPlaceholder`, `resultKey`,
    `params[]`, and an `invoke(client, input, opts, signal)` function).
 2. Register it in `server/src/endpoints/registry.ts`.
-3. Done. The sidebar, parameter form, raw JSON, code snippet, and telemetry all work.
+3. Run a normal dev/typecheck/build command; the pre-script regenerates the bundled
+   metadata. The sidebar, parameter form, raw JSON, code snippet, and telemetry all work.
    Results render via `GenericCards` when `resultKey` points at an array; for a bespoke
    layout add `web/src/components/results/<Name>.tsx` and map it in `ResultsPanel.tsx`.
 
@@ -120,7 +123,9 @@ Owner role (see [abuse-protection.md](./abuse-protection.md)).
 
 ## Build & run
 
-- **Local dev:** `npm run dev` → web on `:5173` (Vite proxies `/api` → `:3001`).
+- **Metadata generation:** `npm run generate:web-meta`; normal web dev/typecheck/build
+  commands invoke it automatically.
+- **Local dev:** `npm run dev` → generated metadata + web on `:5173` (Vite proxies searches to `:3001`).
 - **Production backend:** `Dockerfile` builds and runs only the Express API on port `8080`.
 - **Production frontend:** Vite builds `web/dist`; GitHub Actions uploads it to SWA.
 - **Deploy:** Bicep/`azd` provisions SWA + ACA; GitHub Actions deploys both artifacts.

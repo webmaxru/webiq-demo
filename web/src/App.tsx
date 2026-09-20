@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getMeta, runSearch, type ParamsMap, type ParamValue } from './api/client';
+import { runSearch, type ParamsMap, type ParamValue } from './api/client';
 import { ApiKeyBanner } from './components/ApiKeyBanner';
 import { AboutWebIQ } from './components/AboutWebIQ';
 import { EndpointSidebar } from './components/EndpointSidebar';
@@ -9,7 +9,8 @@ import { compactParams, defaultParams, ParameterForm } from './components/Parame
 import { Footer } from './components/Footer';
 import { OutputTabs } from './components/OutputTabs';
 import { RunBar } from './components/RunBar';
-import type { EndpointMeta, MetaResponse, SearchFailure, SearchResponse } from './types/meta';
+import { endpointMetadata } from './generated/endpointMeta';
+import type { EndpointMeta, SearchFailure, SearchResponse } from './types/meta';
 
 interface LastRequest {
   endpointId: string;
@@ -33,8 +34,6 @@ function networkFailure(endpointId: string, message: string): SearchFailure {
 }
 
 export default function App() {
-  const [meta, setMeta] = useState<MetaResponse>();
-  const [metaError, setMetaError] = useState<string>();
   const [view, setView] = useState<'home' | 'endpoint'>('home');
   const [selectedId, setSelectedId] = useState<string>();
   const [input, setInput] = useState('');
@@ -47,8 +46,8 @@ export default function App() {
   const startupTimerRef = useRef<number | undefined>();
 
   const selectedEndpoint = useMemo(
-    () => meta?.endpoints.find((endpoint) => endpoint.id === selectedId),
-    [meta?.endpoints, selectedId],
+    () => endpointMetadata.find((endpoint) => endpoint.id === selectedId),
+    [selectedId],
   );
 
   const applyEndpoint = useCallback((endpoint: EndpointMeta) => {
@@ -79,39 +78,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    let mounted = true;
-    const startupTimer = window.setTimeout(() => {
-      if (mounted && startupTimerRef.current === startupTimer) {
-        setAppStarting(true);
-      }
-    }, 5000);
-    startupTimerRef.current = startupTimer;
-
-    getMeta()
-      .then((nextMeta) => {
-        if (!mounted) {
-          return;
-        }
-
-        setMeta(nextMeta);
-      })
-      .catch((error: unknown) => {
-        if (mounted) {
-          setMetaError(error instanceof Error ? error.message : 'Unable to load API metadata.');
-        }
-      })
-      .finally(() => {
-        if (mounted && startupTimerRef.current === startupTimer) {
-          window.clearTimeout(startupTimer);
-          startupTimerRef.current = undefined;
-          setAppStarting(false);
-        }
-      });
-
     return () => {
-      mounted = false;
-      window.clearTimeout(startupTimer);
-      if (startupTimerRef.current === startupTimer) {
+      if (startupTimerRef.current) {
+        window.clearTimeout(startupTimerRef.current);
         startupTimerRef.current = undefined;
       }
       abortRef.current?.abort();
@@ -201,30 +170,22 @@ export default function App() {
   };
 
   const telemetry = response?.ok ? response.telemetry : response?.telemetry;
+  const apiKeyMissing = response?.ok === false && response.error.class === 'ConfigurationError';
 
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
       <main className="mx-auto grid w-full max-w-7xl flex-1 gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[18rem_minmax(0,1fr)] lg:px-8">
         <div className="min-w-0">
-          {meta ? (
-            <EndpointSidebar
-              endpoints={meta.endpoints}
-              homeSelected={view === 'home'}
-              onSelect={applyEndpoint}
-              onSelectHome={selectHome}
-              selectedId={selectedId}
-            />
-          ) : (
-            <div className="card p-4 text-sm text-ink-500 dark:text-ink-400">Loading endpoints…</div>
-          )}
+          <EndpointSidebar
+            endpoints={endpointMetadata}
+            homeSelected={view === 'home'}
+            onSelect={applyEndpoint}
+            onSelectHome={selectHome}
+            selectedId={selectedId}
+          />
         </div>
         <div className="min-w-0 space-y-5">
-          {metaError ? (
-            <div className="border border-red-200 bg-red-50 p-4 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
-              {metaError}
-            </div>
-          ) : null}
           {appStarting ? (
             <div
               aria-live="polite"
@@ -238,7 +199,7 @@ export default function App() {
             <AboutWebIQ />
           ) : selectedEndpoint ? (
             <>
-              {meta && !meta.keyConfigured ? <ApiKeyBanner /> : null}
+              {apiKeyMissing ? <ApiKeyBanner /> : null}
               <section className="card space-y-6 p-5">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">

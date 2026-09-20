@@ -6,7 +6,7 @@ import helmet from 'helmet';
 import { env } from './env';
 import { errorHandler } from './middleware/errorHandler';
 import { generalRateLimiter, searchRateLimiter } from './middleware/rateLimit';
-import { metaRouter } from './routes/meta';
+import { healthRouter } from './routes/health';
 import { searchRouter } from './routes/search';
 
 const app = express();
@@ -42,7 +42,7 @@ app.use(
 app.use('/api/search', searchRateLimiter);
 app.use('/api', generalRateLimiter);
 
-app.use('/api', metaRouter);
+app.use('/api', healthRouter);
 app.use('/api', searchRouter);
 
 app.use('/api/*', (_req, res) => {

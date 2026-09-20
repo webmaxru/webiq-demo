@@ -25,6 +25,7 @@ Thumbs.db
 
 # Vite
 web/dist/
+web/src/generated/endpointMeta.ts
 
 # azd manages .azure/.gitignore (ignores the whole folder, incl. env secrets).
 # Belt-and-suspenders in case that file is ever removed:
@@ -32,4 +33,3 @@ web/dist/
 
 # Playwright MCP scratch output
 .playwright-mcp/
-
