@@ -91,7 +91,9 @@ works. You can then enable the orange-cloud proxy if desired and set Cloudflare
 ## Optional dedicated custom domain for the ACA backend
 
 The remaining instructions apply only if the API itself needs a separate hostname such
-as `api.example.com`. The frontend does not require an ACA custom domain.
+as `api.example.com`. The frontend does not require an ACA custom domain. The concrete
+`webiq.isainative.dev` values below document the old ACA binding for cleanup and
+troubleshooting; do not reapply them after the SWA cutover.
 
 Azure validates domain ownership and issues the certificate via DNS, so the DNS records
 must exist before the certificate is provisioned.

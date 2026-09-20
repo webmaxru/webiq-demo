@@ -13,8 +13,9 @@ artifact to SWA. The frontend remains available while ACA has zero idle replicas
 
 | Item | Value |
 |------|-------|
-| URL (custom) | https://webiq.isainative.dev |
-| URL (default) | https://ca-webiq-demo-wr3bqs.delightfulhill-9c37dc23.eastus2.azurecontainerapps.io |
+| Frontend (generated, live) | https://delightful-cliff-0ee0ef20f.2.azurestaticapps.net |
+| Frontend custom domain | https://webiq.isainative.dev — **pending Cloudflare CNAME cutover** |
+| Backend API | https://ca-webiq-demo-wr3bqs.delightfulhill-9c37dc23.eastus2.azurecontainerapps.io |
 | Subscription | Visual Studio Enterprise Subscription `d0b7d6ee-17bf-4c4f-b79d-4f6c2cb583fd` |
 | Tenant | `347ef3c8-1f54-41d9-b57d-22a4923cb3c4` (Salnikov Gmail Directory) |
 | Region | East US 2 |
@@ -246,21 +247,19 @@ act on abuse.
 
 ## Custom domain
 
-Bound to `webiq.isainative.dev` with a free managed TLS cert via a **two-phase** flow.
-Full walkthrough (Cloudflare DNS, proxy, SSL mode, the issuance gotchas) in
-[custom-domain.md](./custom-domain.md).
+The generated SWA hostname is live. `webiq.isainative.dev` still targets ACA and returns
+404 now that the image is API-only; update its Cloudflare CNAME, then bind it to SWA.
+The exact cutover and rollback-safe order is in [custom-domain.md](./custom-domain.md).
 
 ## Container build (`Dockerfile`)
 
-Multi-stage, **build context = repo root**. Built and pushed to **ghcr.io** by CI
-(`docker/build-push-action`), not by azd/ACR:
-1. `node:22-alpine` build stage → `npm ci` → copy sources → `npm run build` (server tsc +
-   web vite). Produces `server/dist` and `web/dist`.
-2. `node:22-alpine` runtime stage → `npm ci --omit=dev`, copy `server/dist` + `web/dist`,
-   run as non-root `node` user, `CMD node server/dist/index.js`, `PORT=8080`.
+Multi-stage, **build context = repo root**. CI builds and pushes this API-only image to
+ghcr.io:
+1. `node:22-alpine` build stage → `npm ci` → `npm run build:server`.
+2. `node:22-alpine` runtime stage → production dependencies + `server/dist`, non-root
+   `node` user, `CMD node server/dist/index.js`, `PORT=8080`.
 
-In production the server serves `web/dist` statically (so `/`, `/robots.txt`,
-`/og-image.png`, etc. are served before the SPA fallback).
+The frontend is a separate Vite build uploaded from `web/dist` to SWA.
 
 ## Related docs
 
