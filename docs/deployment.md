@@ -45,6 +45,10 @@ costs **$0**. The trade-off is a brief cold start on the first API request after
 period; after five seconds the UI displays “Application is starting”. The public backend
 image remains on free GitHub Container Registry storage.
 
+The SWA index renders from bundled metadata and immediately sends a background
+`GET /api/health` request. This warm-up does not block or alter the page, but often makes
+the user's first search avoid most of the scale-from-zero delay.
+
 | Resource | Monthly cost (idle) |
 |----------|---------------------|
 | Static Web Apps frontend (Free) | **$0** |

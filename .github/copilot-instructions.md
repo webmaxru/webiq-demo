@@ -28,7 +28,8 @@ official [`@microsoft/webiq`](https://www.npmjs.com/package/@microsoft/webiq) SD
 - Add a Web IQ endpoint = **one descriptor file** in `server/src/endpoints/` + register it
   in `registry.ts`. `server/scripts/generateWebMeta.ts` turns the registry into bundled
   frontend metadata before web dev/typecheck/build; never restore a page-load `/api/meta`
-  dependency.
+  dependency. The index may fire-and-forget `/api/health` to warm ACA, but must not block
+  rendering on that request or display its response.
 - Verify before claiming done: `npm run typecheck`, `npm run lint`, `npm run build`. The
   big bugs below were **not** caught by typecheck/build — only by running the app.
 

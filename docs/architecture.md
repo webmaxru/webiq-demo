@@ -75,16 +75,18 @@ Abuse signals (`rate_limit`, `input_too_long`, `payload_too_large`) are recorded
 | Area | Files |
 |------|-------|
 | Shell | `App.tsx` (state, run/abort, sticky-footer layout), `main.tsx`, `components/Header.tsx`, `components/Footer.tsx` |
-| API | `api/client.ts` (`runSearch` with `AbortController`), `types/meta.ts` (mirrors `contract.ts`) |
+| API | `api/client.ts` (one-shot background `warmBackend`, plus `runSearch` with `AbortController`), `types/meta.ts` (mirrors `contract.ts`) |
 | Generated data | `src/generated/endpointMeta.ts` (ignored; regenerated before dev/typecheck/build and bundled by Vite) |
 | Dynamic form | `components/ParameterForm.tsx` + `components/fields/{Text,Number,Boolean,Enum,MultiEnum}Field.tsx` |
 | Output | `components/OutputTabs.tsx`, `ResultsPanel.tsx`, `results/*` (per-endpoint + `GenericCards` fallback), `RawJsonViewer.tsx`, `CodeSnippet.tsx`, `TelemetryPanel.tsx`, `ErrorBanner.tsx`, `ApiKeyBanner.tsx` |
 
 The UI has **no hard-coded knowledge of individual parameters**. Endpoint metadata is
 generated from the backend registry and bundled into the SPA, so the complete sidebar
-and forms render without a startup API request or ACA cold start. Hosted search calls
-resolve against `VITE_API_BASE_URL`; local development uses Vite's `/api` proxy. A search
-still pending after five seconds displays an accessible “Application is starting” status.
+and forms render without waiting for ACA. After the index renders, it sends one
+fire-and-forget `/api/health` request to warm the scale-to-zero backend; its result is not
+shown. Hosted search calls resolve against `VITE_API_BASE_URL`; local development uses
+Vite's `/api` proxy. A search still pending after five seconds displays an accessible
+“Application is starting” status.
 
 ## The extensibility model (core design)
 

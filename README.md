@@ -148,7 +148,9 @@ Production is split into two services:
 The browser calls ACA through `VITE_API_BASE_URL`; the API key remains in an ACA secret.
 Bicep configures ACA CORS for the generated SWA hostname and, when configured, the
 frontend custom domain. If an API call is still pending after five seconds, the UI
-displays an accessible “Application is starting” notice for the cold start.
+displays an accessible “Application is starting” notice for the cold start. The index
+page also sends a fire-and-forget `/api/health` request after rendering so ACA can warm
+before the first search; no response data is shown.
 
 **What gets created:** 1 Free-tier Static Web App, 1 Consumption Container Apps
 environment, 1 API-only Container App (0.25 vCPU / 0.5 GiB, scale 0→3), Log Analytics,

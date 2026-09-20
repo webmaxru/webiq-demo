@@ -18,6 +18,21 @@ function apiUrl(pathname: string): string {
   return baseUrl ? `${baseUrl}${pathname}` : pathname;
 }
 
+let warmupRequest: Promise<void> | undefined;
+
+export function warmBackend(): Promise<void> {
+  warmupRequest ??= fetch(apiUrl('/api/health'), {
+    cache: 'no-store',
+    keepalive: true,
+  }).then((response) => {
+    if (!response.ok) {
+      throw new Error(`Unable to warm the API (${response.status})`);
+    }
+  });
+
+  return warmupRequest;
+}
+
 export async function runSearch(
   endpointId: string,
   input: string,

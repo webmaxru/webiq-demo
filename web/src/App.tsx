@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { runSearch, type ParamsMap, type ParamValue } from './api/client';
+import { runSearch, warmBackend, type ParamsMap, type ParamValue } from './api/client';
 import { ApiKeyBanner } from './components/ApiKeyBanner';
 import { AboutWebIQ } from './components/AboutWebIQ';
 import { EndpointSidebar } from './components/EndpointSidebar';
@@ -78,6 +78,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    void warmBackend().catch((error: unknown) => {
+      console.warn('Backend warm-up failed.', error);
+    });
+
     return () => {
       if (startupTimerRef.current) {
         window.clearTimeout(startupTimerRef.current);
