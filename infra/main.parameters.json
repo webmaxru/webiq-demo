@@ -25,6 +25,9 @@
     },
     "monthlyBudgetAmount": {
       "value": "${WEBIQ_MONTHLY_BUDGET}"
+    },
+    "budgetStartDate": {
+      "value": "${WEBIQ_BUDGET_START_DATE}"
     }
   }
 }

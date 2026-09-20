@@ -28,8 +28,11 @@ param minReplicas string = '0'
 @description('Monthly cost-budget amount that triggers spend alerts (string from azd WEBIQ_MONTHLY_BUDGET). Empty defaults to 50. IMPORTANT: Azure Cost Management budgets have NO currency field — the number is interpreted in whatever currency the subscription is billed in. So 50 means 50 NOK only if this subscription bills in NOK; otherwise it is 50 of the subscription\'s billing currency.')
 param monthlyBudgetAmount string = '50'
 
-@description('Cost-budget tracking start date (first of a month, yyyy-MM-01). Defaults to the first day of the current UTC month, generated at deploy time. Not normally set by hand.')
-param budgetStartDate string = utcNow('yyyy-MM-01')
+@description('Existing cost-budget start date (first of a month, yyyy-MM-01). Keep this stable across redeployments because Azure does not allow updating a budget start date. Leave empty for a new budget.')
+param budgetStartDate string = ''
+
+@description('Generated first-of-current-month date used only when budgetStartDate is empty. utcNow is valid only in a parameter default.')
+param generatedBudgetStartDate string = utcNow('yyyy-MM-01')
 
 var tags = {
   'azd-env-name': environmentName
@@ -37,6 +40,7 @@ var tags = {
 
 // azd substitutes an unset WEBIQ_MONTHLY_BUDGET as '' — fall back to 50.
 var budgetAmount = empty(monthlyBudgetAmount) ? 50 : int(monthlyBudgetAmount)
+var effectiveBudgetStartDate = empty(budgetStartDate) ? generatedBudgetStartDate : budgetStartDate
 
 resource rg 'Microsoft.Resources/resourceGroups@2023-07-01' = {
   name: 'rg-${environmentName}'
@@ -76,7 +80,7 @@ resource costBudget 'Microsoft.Consumption/budgets@2024-08-01' = {
     timeGrain: 'Monthly'
     timePeriod: {
       // endDate omitted → Azure defaults to 10 years from the start date.
-      startDate: budgetStartDate
+      startDate: effectiveBudgetStartDate
     }
     notifications: {
       // Early warning at 80% of the budget (e.g. 40 of 50).

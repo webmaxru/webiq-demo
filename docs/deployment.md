@@ -139,7 +139,12 @@ azd env set WEBIQ_CUSTOM_DOMAIN   api.example.com         # optional ACA API hos
 azd env set WEBIQ_BIND_CERT       true                    # phase 2 of an ACA API hostname
 azd env set WEBIQ_MIN_REPLICAS    0                       # optional, default 0 (scale-to-zero). 1 = keep one warm replica
 azd env set WEBIQ_MONTHLY_BUDGET  50                      # optional, default 50 — cost-budget amount (billing currency)
+azd env set WEBIQ_BUDGET_START_DATE 2026-06-01            # preserve an existing budget's immutable start date
 ```
+
+For a new environment, leave `WEBIQ_BUDGET_START_DATE` empty and Bicep uses the first
+day of the current month. After the first successful provision, keep the resulting date
+stable for later runs; Azure rejects attempts to update an existing budget's start date.
 
 > The abuse alert needs no env var — it is always provisioned and notifies the subscription
 > **Owner** role. See [abuse-protection.md](./abuse-protection.md).
