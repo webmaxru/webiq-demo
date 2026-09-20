@@ -14,7 +14,7 @@ artifact to SWA. The frontend remains available while ACA has zero idle replicas
 | Item | Value |
 |------|-------|
 | Frontend (generated, live) | https://delightful-cliff-0ee0ef20f.2.azurestaticapps.net |
-| Frontend custom domain | https://webiq.isainative.dev — **pending Cloudflare CNAME cutover** |
+| Frontend custom domain | https://webiq.isainative.dev — live on SWA |
 | Backend API | https://ca-webiq-demo-wr3bqs.delightfulhill-9c37dc23.eastus2.azurecontainerapps.io |
 | Subscription | Visual Studio Enterprise Subscription `d0b7d6ee-17bf-4c4f-b79d-4f6c2cb583fd` |
 | Tenant | `347ef3c8-1f54-41d9-b57d-22a4923cb3c4` (Salnikov Gmail Directory) |
@@ -247,9 +247,9 @@ act on abuse.
 
 ## Custom domain
 
-The generated SWA hostname is live. `webiq.isainative.dev` still targets ACA and returns
-404 now that the image is API-only; update its Cloudflare CNAME, then bind it to SWA.
-The exact cutover and rollback-safe order is in [custom-domain.md](./custom-domain.md).
+`webiq.isainative.dev` is bound to SWA with an Azure-managed certificate. The generated
+SWA hostname remains available as a fallback. The Cloudflare cutover and rollback-safe
+order are documented in [custom-domain.md](./custom-domain.md).
 
 ## Container build (`Dockerfile`)
 

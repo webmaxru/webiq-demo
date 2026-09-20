@@ -15,8 +15,8 @@ official [`@microsoft/webiq`](https://www.npmjs.com/package/@microsoft/webiq) SD
   Container Apps serves only `/api/*`.
 - **Backend scales to zero by default** (`minReplicas: 0`; `WEBIQ_MIN_REPLICAS=1` keeps
   one warm replica). Infra comes from `azd provision` + Bicep; GitHub Actions deploys the
-  SWA artifact and rolls the public **ghcr.io** API image. The generated SWA URL is live;
-  `https://webiq.isainative.dev` requires the documented Cloudflare CNAME cutover.
+  SWA artifact and rolls the public **ghcr.io** API image. Live at
+  https://webiq.isainative.dev.
 
 ## Conventions
 

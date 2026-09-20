@@ -14,7 +14,7 @@ out), see [.github/copilot-instructions.md](../.github/copilot-instructions.md).
 
 ## Quick links
 
-- **Live generated frontend:** https://delightful-cliff-0ee0ef20f.2.azurestaticapps.net
-- **Custom frontend URL (pending DNS cutover):** https://webiq.isainative.dev
+- **Live app:** https://webiq.isainative.dev
+- **Generated SWA fallback:** https://delightful-cliff-0ee0ef20f.2.azurestaticapps.net
 - **Repo:** https://github.com/webmaxru/webiq-demo
 - **Web IQ:** https://www.microsoft.com/en-us/webiq · SDK: [`@microsoft/webiq`](https://www.npmjs.com/package/@microsoft/webiq)
