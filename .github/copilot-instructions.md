@@ -244,3 +244,22 @@ ARM REST with azd's token. Three traps, all learned the hard way:
 - **Symptom:** VS Code "Apply changes to the current workspace" fails with *"stage or commit your changes and try again"* even though every worktree is clean.
 - **Cause:** the agent branch had **diverged** from `main` (cut ~13 commits back, before App Insights/dark-theme/GDPR). Apply can't reconcile that automatically; the message is misleading.
 - **Fix:** ignore Apply — `git reset --hard main` the agent branch and **re-apply the work on top** (a manual rebase), reconciling the overlap, then open a PR. Keep a `backup/...` branch first so the original commits are recoverable.
+
+
+<!-- github-knowledge-base-start -->
+## Knowledge Base
+
+### Purpose
+
+This repository uses the Knowledge Base at [https://github.com/webmaxru/webiq-demo](https://github.com/webmaxru/webiq-demo) on branch `main`.
+
+### Required behavior
+
+1. Before changing code, read `docs/index.md` from that branch.
+2. Use the index to open only the knowledge files relevant to the task.
+3. If the index is unavailable, stop and report that the Knowledge Base could not be loaded.
+
+### Source of truth
+
+Generated knowledge tracks the code. When the knowledge and code disagree, trust the code.
+<!-- github-knowledge-base-end -->
