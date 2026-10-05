@@ -232,6 +232,7 @@ jobs:
           fi
 
       - name: Deploy frontend to Azure Static Web Apps
+        id: frontend
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ steps.hosting.outputs.swa_token }}
@@ -240,3 +241,34 @@ jobs:
           output_location: .
           skip_app_build: true
           skip_api_build: true
+
+      - name: Allow deployed frontend preview origin
+        env:
+          FRONTEND_URL: ${{ steps.frontend.outputs.static_web_app_url }}
+        run: |
+          if [ -z "$FRONTEND_URL" ]; then
+            echo "::error::Static Web Apps did not return a deployment URL."
+            exit 1
+          fi
+
+          az functionapp cors add \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "${{ steps.hosting.outputs.function_app_name }}" \
+            --allowed-origins "$FRONTEND_URL" \
+            --only-show-errors \
+            --output none
+
+          echo "Frontend preview: $FRONTEND_URL"
+
+          CORS_HEADER=$(curl \
+            --silent \
+            --show-headers \
+            --output /dev/null \
+            --header "Origin: $FRONTEND_URL" \
+            "${{ steps.hosting.outputs.api_url }}/api/health" \
+            | awk 'BEGIN{IGNORECASE=1} /^access-control-allow-origin:/ {print $2}' \
+            | tr -d '\r')
+          if [ "$CORS_HEADER" != "$FRONTEND_URL" ]; then
+            echo "::error::Functions backend did not allow the deployed frontend origin."
+            exit 1
+          fi
