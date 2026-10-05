@@ -63,5 +63,6 @@ a self-contained package, and verifies both `/api/health` and a real Web IQ sear
 Pushes run validation; opening the branch PR triggers deployment because the repository's
 existing Azure OIDC identity trusts same-repository pull requests.
 
-The deployed API URL is printed by the workflow. To point a frontend build at it, set
-`VITE_API_BASE_URL` to that URL before running `npm run build:web`.
+The workflow also builds the frontend with `VITE_API_BASE_URL` set to the deployed Functions
+URL, verifies that URL is embedded in the generated bundle, and uploads the SPA to the existing
+Static Web Apps Free resource. The deployed API URL is printed in the workflow log.
