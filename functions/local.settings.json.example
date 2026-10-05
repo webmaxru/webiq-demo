@@ -1,0 +1,13 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "WEBIQ_API_KEY": "<your-webiq-key>",
+    "PORT": "7071",
+    "WEBIQ_ANON_SALT": "webiq-demo-anon"
+  },
+  "Host": {
+    "CORS": "http://localhost:5173"
+  }
+}

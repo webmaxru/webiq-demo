@@ -1,0 +1,20 @@
+{
+  "name": "@webiq-demo/functions",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "dist/functions/src/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "func start --port 7071 --verbose",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.7.0",
+    "@microsoft/webiq": "^0.1.0",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}
