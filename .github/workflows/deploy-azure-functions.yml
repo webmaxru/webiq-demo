@@ -262,7 +262,7 @@ jobs:
 
           CORS_HEADER=$(curl \
             --silent \
-            --show-headers \
+            --dump-header - \
             --output /dev/null \
             --header "Origin: $FRONTEND_URL" \
             "${{ steps.hosting.outputs.api_url }}/api/health" \
