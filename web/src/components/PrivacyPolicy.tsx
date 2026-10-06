@@ -76,9 +76,11 @@ export function PrivacyPolicy() {
           <section className="space-y-3">
             <h2 className="text-lg font-bold text-ink-950 dark:text-white">No cookies, no device storage for tracking</h2>
             <p className="text-sm leading-6 text-ink-700 dark:text-ink-300">
-              This site sets <strong>no cookies</strong> and uses <strong>no localStorage,
-              sessionStorage, fingerprinting, or third-party trackers</strong> for analytics or
-              advertising. We do not store or read information on your device for those purposes, so
+              This site sets <strong>no cookies</strong> and uses <strong>no localStorage for
+              analytics, fingerprinting, or third-party trackers</strong> for analytics or
+              advertising. A temporary session identifier may be held in sessionStorage solely to
+              enforce per-session request limits; it is not used for analytics. We do not store or
+              read information on your device for advertising purposes, so
               no cookie-consent banner is shown. The only thing we may save locally is your
               analytics opt-out choice below — strictly to remember that you objected.
             </p>

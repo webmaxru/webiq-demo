@@ -1,0 +1,274 @@
+name: Deploy Azure Functions backend
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-functions-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  validate:
+    name: Validate (typecheck + lint + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+
+  deploy:
+    name: Deploy cost-optimized Function App
+    needs: validate
+    # The Functions backend is the production backend on main. Pull requests
+    # validate only; a push to main (or a manual run) performs the deployment.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+      AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
+      WEBIQ_API_KEY: ${{ secrets.WEBIQ_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      - name: Sign in to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Provision lowest-cost Functions resources
+        id: hosting
+        run: |
+          SUFFIX=$(printf '%s' "${AZURE_SUBSCRIPTION_ID}:${AZURE_RESOURCE_GROUP}" | sha256sum | cut -c1-8)
+          FUNCTION_APP_NAME="func-${AZURE_ENV_NAME}-${SUFFIX}"
+          STORAGE_ACCOUNT_NAME="stwebiqfunc${SUFFIX}"
+
+          az storage account create \
+            --name "$STORAGE_ACCOUNT_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --location "$AZURE_LOCATION" \
+            --sku Standard_LRS \
+            --kind StorageV2 \
+            --min-tls-version TLS1_2 \
+            --allow-blob-public-access false \
+            --tags webiq-component=functions-backend cost-profile=consumption \
+            --only-show-errors \
+            --output none
+
+          if ! az functionapp show \
+            --name "$FUNCTION_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --only-show-errors \
+            --output none 2>/dev/null; then
+            az functionapp create \
+              --name "$FUNCTION_APP_NAME" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --storage-account "$STORAGE_ACCOUNT_NAME" \
+              --consumption-plan-location "$AZURE_LOCATION" \
+              --functions-version 4 \
+              --runtime node \
+              --runtime-version 22 \
+              --os-type Linux \
+              --disable-app-insights true \
+              --https-only true \
+              --tags webiq-component=functions-backend cost-profile=consumption \
+              --only-show-errors \
+              --output none
+          fi
+
+          APP_ID=$(az functionapp show \
+            --name "$FUNCTION_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query id \
+            --output tsv)
+          az resource update \
+            --ids "$APP_ID/config/web" \
+            --set properties.functionAppScaleLimit=1 properties.minimumElasticInstanceCount=0 \
+            --only-show-errors \
+            --output none
+
+          az functionapp config appsettings set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$FUNCTION_APP_NAME" \
+            --settings \
+              WEBIQ_API_KEY="$WEBIQ_API_KEY" \
+              FUNCTIONS_NODE_BLOCK_ON_ENTRY_POINT_ERROR="true" \
+              WEBIQ_TIMEOUT_MS="15000" \
+              RATE_LIMIT_SEARCH_MAX="15" \
+              RATE_LIMIT_WINDOW_MS="60000" \
+            --only-show-errors \
+            --output none
+
+          az functionapp cors add \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$FUNCTION_APP_NAME" \
+            --allowed-origins \
+              "https://webiq.isainative.dev" \
+              "https://delightful-cliff-0ee0ef20f.2.azurestaticapps.net" \
+            --only-show-errors \
+            --output none
+
+          SWA_ID=$(az resource list \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --resource-type Microsoft.Web/staticSites \
+            --query "[?tags.\"webiq-component\"=='frontend'].id | [0]" \
+            --output tsv)
+          if [ -z "$SWA_ID" ]; then
+            echo "::error::No Static Web App tagged webiq-component=frontend in $AZURE_RESOURCE_GROUP."
+            exit 1
+          fi
+
+          SWA_TOKEN=$(az rest \
+            --method post \
+            --url "https://management.azure.com${SWA_ID}/listSecrets?api-version=2023-12-01" \
+            --query properties.apiKey \
+            --output tsv)
+          if [ -z "$SWA_TOKEN" ]; then
+            echo "::error::Unable to obtain the Static Web Apps deployment token."
+            exit 1
+          fi
+          echo "::add-mask::$SWA_TOKEN"
+
+          echo "function_app_name=$FUNCTION_APP_NAME" >> "$GITHUB_OUTPUT"
+          echo "api_url=https://${FUNCTION_APP_NAME}.azurewebsites.net" >> "$GITHUB_OUTPUT"
+          echo "swa_token=$SWA_TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare self-contained deployment package
+        run: |
+          rm -rf functions/.package
+          mkdir -p functions/.package
+          cp functions/host.json functions/package.json functions/.package/
+          cp -R functions/dist functions/.package/dist
+          npm install \
+            --prefix functions/.package \
+            --omit=dev \
+            --ignore-scripts \
+            --no-package-lock \
+            --workspaces=false
+
+      - name: Publish the Function App
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ steps.hosting.outputs.function_app_name }}
+          package: ./functions/.package
+
+      - name: Verify deployed Functions backend
+        run: |
+          for attempt in {1..30}; do
+            if curl --silent --fail --max-time 30 \
+              "${{ steps.hosting.outputs.api_url }}/api/health" >/dev/null; then
+              break
+            fi
+            if [ "$attempt" = "30" ]; then
+              echo "::error::The Functions health endpoint did not become ready."
+              exit 1
+            fi
+            sleep 10
+          done
+
+          RESPONSE_FILE=$(mktemp)
+          STATUS=$(curl \
+            --silent \
+            --show-error \
+            --max-time 120 \
+            --output "$RESPONSE_FILE" \
+            --write-out "%{http_code}" \
+            --header "Content-Type: application/json" \
+            --data '{"input":"Microsoft Web IQ","params":{"maxResults":1}}' \
+            "${{ steps.hosting.outputs.api_url }}/api/search/web")
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Functions backend verification failed with HTTP $STATUS."
+            cat "$RESPONSE_FILE"
+            exit 1
+          fi
+
+          echo "Azure Functions backend: ${{ steps.hosting.outputs.api_url }}"
+
+      - name: Build frontend against Azure Functions backend
+        env:
+          VITE_API_BASE_URL: ${{ steps.hosting.outputs.api_url }}
+        run: npm run build:web
+
+      - name: Verify frontend uses Azure Functions backend
+        env:
+          EXPECTED_API_URL: ${{ steps.hosting.outputs.api_url }}
+        run: |
+          if ! grep -R --fixed-strings "$EXPECTED_API_URL" web/dist/assets >/dev/null; then
+            echo "::error::The frontend bundle does not contain the deployed Functions API URL."
+            exit 1
+          fi
+
+      - name: Deploy frontend to Azure Static Web Apps
+        id: frontend
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.hosting.outputs.swa_token }}
+          action: upload
+          app_location: web/dist
+          output_location: .
+          skip_app_build: true
+          skip_api_build: true
+
+      - name: Allow deployed frontend preview origin
+        env:
+          FRONTEND_URL: ${{ steps.frontend.outputs.static_web_app_url }}
+        run: |
+          if [ -z "$FRONTEND_URL" ]; then
+            echo "::error::Static Web Apps did not return a deployment URL."
+            exit 1
+          fi
+
+          az functionapp cors add \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "${{ steps.hosting.outputs.function_app_name }}" \
+            --allowed-origins "$FRONTEND_URL" \
+            --only-show-errors \
+            --output none
+
+          echo "Frontend preview: $FRONTEND_URL"
+
+          CORS_HEADER=$(curl \
+            --silent \
+            --dump-header - \
+            --output /dev/null \
+            --header "Origin: $FRONTEND_URL" \
+            "${{ steps.hosting.outputs.api_url }}/api/health" \
+            | awk 'BEGIN{IGNORECASE=1} /^access-control-allow-origin:/ {print $2}' \
+            | tr -d '\r')
+          if [ "$CORS_HEADER" != "$FRONTEND_URL" ]; then
+            echo "::error::Functions backend did not allow the deployed frontend origin."
+            exit 1
+          fi

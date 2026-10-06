@@ -3,6 +3,7 @@ import type { Request, RequestHandler, Response } from 'express';
 import type { SearchFailure } from '../contract';
 import { trackAbuse } from '../abuse';
 import { env } from '../env';
+import { rateLimitKey, RATE_LIMIT_SESSION_HEADER } from '../rateLimitIdentity';
 
 function endpointIdFromUrl(req: Request): string | undefined {
   const match = req.originalUrl.match(/\/api\/search\/([^/?]+)/);
@@ -45,6 +46,7 @@ function abuseLimitHandler(limit: number) {
 export const searchRateLimiter: RequestHandler = rateLimit({
   windowMs: env.rateLimit.windowMs,
   limit: env.rateLimit.searchMax,
+  keyGenerator: (req) => rateLimitKey(req.get(RATE_LIMIT_SESSION_HEADER), req.ip ?? 'unknown'),
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   handler: abuseLimitHandler(env.rateLimit.searchMax),
@@ -55,6 +57,7 @@ export const searchRateLimiter: RequestHandler = rateLimit({
 export const generalRateLimiter: RequestHandler = rateLimit({
   windowMs: env.rateLimit.windowMs,
   limit: env.rateLimit.generalMax,
+  keyGenerator: (req) => rateLimitKey(req.get(RATE_LIMIT_SESSION_HEADER), req.ip ?? 'unknown'),
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   skip: (req) => req.path === '/health',

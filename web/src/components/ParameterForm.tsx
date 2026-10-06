@@ -41,14 +41,33 @@ export function ParameterForm({ params, values, onChange, onReset }: ParameterFo
   }
 
   return (
-    <section className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">Parameters</h3>
-        <button className="text-sm font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-300" onClick={onReset} type="button">
+    <details className="group">
+      <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold uppercase tracking-wide text-ink-500 hover:text-ink-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:text-ink-400 dark:hover:text-ink-100 dark:focus-visible:ring-offset-ink-950 [&::-webkit-details-marker]:hidden">
+        <svg
+          aria-hidden="true"
+          className="h-4 w-4 transition-transform group-open:rotate-90"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          viewBox="0 0 24 24"
+        >
+          <path d="m9 6 6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        Parameters
+        <span className="normal-case tracking-normal text-ink-400 dark:text-ink-500">
+          ({params.length})
+        </span>
+      </summary>
+      <div className="mt-4 flex justify-end">
+        <button
+          className="text-sm font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-300"
+          onClick={onReset}
+          type="button"
+        >
           Reset to defaults
         </button>
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
         {params.map((param) => {
           const value = values[param.name];
 
@@ -106,6 +125,6 @@ export function ParameterForm({ params, values, onChange, onReset }: ParameterFo
           );
         })}
       </div>
-    </section>
+    </details>
   );
 }
