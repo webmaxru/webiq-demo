@@ -2,7 +2,7 @@ name: Deploy Azure Functions backend
 
 on:
   push:
-    branches: [feature/azure-functions-cost-optimized]
+    branches: [main]
     paths-ignore:
       - '**/*.md'
       - 'docs/**'
@@ -41,9 +41,9 @@ jobs:
   deploy:
     name: Deploy cost-optimized Function App
     needs: validate
-    # The repository's Azure OIDC identity already trusts same-repository PRs.
-    # Branch pushes validate only; the PR event performs the deployment.
-    if: github.event_name == 'pull_request'
+    # The Functions backend is the production backend on main. Pull requests
+    # validate only; a push to main (or a manual run) performs the deployment.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     env:
       AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}

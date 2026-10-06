@@ -52,17 +52,24 @@ npm run dev:functions
 
 ## Azure deployment
 
-```bash
-git push -u origin feature/azure-functions-cost-optimized
-gh pr create --base main --head feature/azure-functions-cost-optimized
-```
-
-The branch workflow provisions an idempotent Linux Consumption Function App and Standard
-LRS storage account, disables Application Insights, caps scale-out at one instance, deploys
-a self-contained package, and verifies both `/api/health` and a real Web IQ search.
-Pushes run validation; opening the branch PR triggers deployment because the repository's
-existing Azure OIDC identity trusts same-repository pull requests.
+The Functions backend is the **production backend on `main`**. Merging to `main` runs
+`.github/workflows/deploy-azure-functions.yml`, which provisions an idempotent Linux
+Consumption Function App and Standard LRS storage account, disables Application Insights,
+caps scale-out at one instance, deploys a self-contained package, and verifies both
+`/api/health` and a real Web IQ search. Pull requests run validation only.
 
 The workflow also builds the frontend with `VITE_API_BASE_URL` set to the deployed Functions
 URL, verifies that URL is embedded in the generated bundle, and uploads the SPA to the existing
 Static Web Apps Free resource. The deployed API URL is printed in the workflow log.
+
+> **Only one workflow may own the frontend.** `.github/workflows/deploy.yml` (Container Apps +
+> ghcr.io) publishes to the *same* Static Web Apps resource with `VITE_API_BASE_URL` pointing at
+> the Container App. To stop the two from overwriting each other, that Container Apps deploy job
+> is **manual only** (`workflow_dispatch`) and is kept as a rollback path; pushes to `main` run
+> only its validate job. Dispatching it repoints the SPA at the Container App — re-run this
+> Functions workflow to switch back.
+
+Search rate limiting is scoped to a random browser-tab session identifier stored in
+`sessionStorage`; the backend hashes it before using it as a limiter key and falls back to the
+client IP when the header is absent or invalid. No account, cookie, or paid state store is
+required.
