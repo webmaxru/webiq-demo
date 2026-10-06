@@ -3,6 +3,7 @@ import {
   ANALYTICS_OPT_OUT_VALUE,
   isAnalyticsOptedOut,
 } from '../lib/analyticsConsent';
+import { getRateLimitSessionId } from '../lib/session';
 import type { SearchResponse } from '../types/meta';
 
 export type ParamValue = string | number | boolean | string[];
@@ -41,6 +42,7 @@ export async function runSearch(
 ): Promise<SearchResponse> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'X-WebIQ-Session-Id': getRateLimitSessionId(),
   };
 
   // Honour the visitor's opt-out so the server suppresses usage telemetry.

@@ -12,6 +12,7 @@ import {
 } from '../../server/src/telemetry';
 import { validateAndCoerce } from '../../server/src/validation';
 import { getClient, isKeyConfigured } from '../../server/src/webiqClient';
+import { rateLimitKey, validSessionId } from '../../server/src/rateLimitIdentity';
 
 interface RateWindow {
   count: number;
@@ -78,7 +79,7 @@ function anonIdFor(req: HttpRequest): string {
 
 function isRateLimited(req: HttpRequest): { limited: boolean; retryAfterSeconds: number } {
   const now = Date.now();
-  const key = clientIp(req);
+  const key = rateLimitKey(validSessionId(req.headers.get('x-webiq-session-id') ?? undefined), clientIp(req));
   const current = rateWindows.get(key);
 
   if (!current || current.resetsAt <= now) {
