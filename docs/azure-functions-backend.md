@@ -87,6 +87,8 @@ Validation includes `npm test`: SDK payload forwarding, bounds/scope behavior,
 typechecked generated examples, and attributed structured result rendering.
 After publishing, `server/scripts/smoke.mjs` exercises live Auto/Advanced, weather,
 Places, all existing search types, Browse, missing-scope fail-closed behavior and
-Commerce (including identifier follow-ups when available). A Commerce 403 is an
-explicit preview-access warning, not a deployment failure. The pipeline also
+Commerce (including identifier follow-ups when available). The smoke test spaces
+Commerce requests 61 seconds apart to respect the preview rate limit; it does
+not retry failed requests. A Commerce search 403 is an explicit preview-access
+warning, not a deployment failure. The pipeline also
 fetches the deployed frontend bundle and checks the new feature surfaces.

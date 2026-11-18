@@ -1,9 +1,17 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 
 const baseUrl = process.argv[2];
 assert.ok(baseUrl, 'Usage: node server/scripts/smoke.mjs <API base URL>');
 const sessionId = randomUUID();
+
+async function commerceFollowUp(endpoint, identifier, params) {
+  // The Commerce preview can throttle consecutive calls for 60 seconds.
+  console.log(`Waiting 61s before ${endpoint} to respect the Commerce rate limit.`);
+  await delay(61_000);
+  return request(endpoint, identifier, params);
+}
 
 async function request(endpoint, input, params = {}) {
   const response = await fetch(new URL(`/api/search/${endpoint}`, baseUrl), {
@@ -75,7 +83,7 @@ if (commerce.response.status === 403) {
     const identifierType = product.id ? 'productId' : product.skuId ? 'skuId' : 'offerId';
     const identifier = product.id ?? product.skuId ?? offer?.id;
     if (identifier) {
-      const offers = await request('commerce-offers', identifier, {
+      const offers = await commerceFollowUp('commerce-offers', identifier, {
         identifierType,
         productId: product.id,
         skuId: product.skuId,
@@ -84,7 +92,7 @@ if (commerce.response.status === 403) {
       assert.equal(offers.payload.ok, true, `Offers failed: ${JSON.stringify(offers.payload.error)}`);
     }
     if (product.id || product.skuId) {
-      const details = await request('commerce-details', product.id ?? product.skuId, {
+      const details = await commerceFollowUp('commerce-details', product.id ?? product.skuId, {
         identifierType: product.id ? 'productId' : 'skuId',
         skuId: product.skuId,
       });
