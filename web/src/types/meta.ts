@@ -1,4 +1,4 @@
-export type ParamType = 'string' | 'number' | 'boolean' | 'enum' | 'multiEnum';
+export type ParamType = 'string' | 'stringList' | 'number' | 'boolean' | 'enum' | 'multiEnum';
 
 export interface ParamMeta {
   name: string;
@@ -13,6 +13,7 @@ export interface ParamMeta {
   options?: string[];
   optionLabels?: Record<string, string>;
   enumImport?: string;
+  maxLength?: number;
 }
 
 export interface EndpointMeta {
@@ -24,6 +25,8 @@ export interface EndpointMeta {
   inputPlaceholder: string;
   resultKey: string | null;
   params: ParamMeta[];
+  documentationUrl?: string;
+  notice?: string;
 }
 
 export interface TelemetryInfo {

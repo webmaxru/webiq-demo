@@ -9,7 +9,7 @@ services:
       - PORT=3001
       - WEBIQ_API_KEY=${WEBIQ_API_KEY:?Set WEBIQ_API_KEY in your .env file}
       - WEB_ORIGIN=http://localhost:8080
-      - WEBIQ_TIMEOUT_MS=${WEBIQ_TIMEOUT_MS:-15000}
+      - WEBIQ_TIMEOUT_MS=${WEBIQ_TIMEOUT_MS:-60000}
       # Telemetry (optional; no-op when unset)
       - APPLICATIONINSIGHTS_CONNECTION_STRING=${APPLICATIONINSIGHTS_CONNECTION_STRING:-}
       - WEBIQ_ANON_SALT=${WEBIQ_ANON_SALT:-}

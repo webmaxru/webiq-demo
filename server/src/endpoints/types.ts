@@ -6,12 +6,14 @@ export type ParamDescriptor = ParamMeta;
 
 export interface EndpointDescriptor extends Omit<EndpointMeta, 'params'> {
   params: ParamDescriptor[];
+  sdkMethod?: string;
+  lookup?: 'offers' | 'details';
   invoke(
     client: WebIQClient,
     input: string,
     opts: Record<string, unknown>,
     signal: AbortSignal,
-  ): Promise<any>;
+  ): Promise<unknown>;
 }
 
 export function toMeta(descriptor: EndpointDescriptor): EndpointMeta {
@@ -24,6 +26,8 @@ export function toMeta(descriptor: EndpointDescriptor): EndpointMeta {
     inputPlaceholder: descriptor.inputPlaceholder,
     resultKey: descriptor.resultKey,
     params: descriptor.params,
+    documentationUrl: descriptor.documentationUrl,
+    notice: descriptor.notice,
   };
 }
 

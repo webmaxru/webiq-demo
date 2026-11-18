@@ -2,7 +2,7 @@ import type { EndpointDescriptor, ParamDescriptor } from './endpoints/types';
 import { enumMemberName } from './webiqClient';
 
 function quote(value: string): string {
-  return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+  return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/\t/g, '\\t')}'`;
 }
 
 function renderValue(param: ParamDescriptor, value: unknown, enumImports: Set<string>): string {
@@ -29,14 +29,17 @@ function renderOptions(
   descriptor: EndpointDescriptor,
   opts: Record<string, unknown>,
   enumImports: Set<string>,
+  input: string,
 ): string {
+  const identifierKey = descriptor.lookup ? String(opts.identifierType ?? 'productId') : undefined;
   const lines = descriptor.params
-    .filter((param) => opts[param.name] !== undefined)
+    .filter((param) => opts[param.name] !== undefined && (!descriptor.lookup || (param.name !== 'identifierType' && param.name !== identifierKey)))
     .map((param) => `  ${param.name}: ${renderValue(param, opts[param.name], enumImports)},`);
 
-  if (lines.length === 0) {
-    return '{}';
+  if (identifierKey) {
+    lines.unshift(`  ${identifierKey}: ${quote(input)},`);
   }
+  lines.push('  timeout: 60_000,');
 
   return `{
 ${lines.join('\n')}
@@ -49,9 +52,9 @@ export function generateSnippet(
   opts: Record<string, unknown>,
 ): string {
   const enumImports = new Set<string>();
-  const options = renderOptions(descriptor, opts, enumImports);
+  const options = renderOptions(descriptor, opts, enumImports, input);
   const imports = ['WebIQClient', ...Array.from(enumImports).sort()].join(', ');
-  const resource = descriptor.id === 'browse' ? 'browse.fetch' : `${descriptor.id}.search`;
+  const resource = descriptor.sdkMethod ?? (descriptor.id === 'browse' ? 'browse.fetch' : `${descriptor.id}.search`);
   const resultExpression = descriptor.resultKey
     ? `response.${descriptor.resultKey} ?? response`
     : 'response';
@@ -62,11 +65,18 @@ export function generateSnippet(
     `const client = new WebIQClient({ apiKey: process.env.WEBIQ_API_KEY });`,
     '',
     'async function main() {',
-    `  const response = await client.${resource}(${quote(input)}, ${options});`,
-    `  console.log(${resultExpression});`,
-    '  await client.close();',
+    '  try {',
+    `    const options = ${options};`,
+    `    const response = await client.${resource}(${descriptor.lookup ? '' : `${quote(input)}, `}options);`,
+    `    console.log(${resultExpression});`,
+    '  } finally {',
+    '    await client.close();',
+    '  }',
     '}',
     '',
-    'void main();',
+    'main().catch((error) => {',
+    '  console.error(error);',
+    '  process.exitCode = 1;',
+    '});',
   ].join('\n');
 }

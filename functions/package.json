@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@azure/functions": "^4.7.0",
-    "@microsoft/webiq": "^0.1.0",
+    "@microsoft/webiq": "^1.2.1",
     "dotenv": "^16.4.7"
   },
   "devDependencies": {

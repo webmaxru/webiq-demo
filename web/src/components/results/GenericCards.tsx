@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { formatDate, truncate } from '../../lib/format';
+import { httpUrl } from './StructuredData';
 
 export type JsonRecord = Record<string, unknown>;
 
@@ -44,7 +45,7 @@ export function GenericCards({ items, title }: { items: unknown; title?: string 
       <div className="grid gap-3">
         {records.map((item, index) => {
           const titleText = asString(item.title) ?? asString(item.name) ?? `Result ${index + 1}`;
-          const url = asString(item.url) ?? asString(item.hostPageUrl);
+          const url = httpUrl(item.clickUrl) ?? httpUrl(item.url) ?? httpUrl(item.hostPageUrl);
           const description = asString(item.content) ?? asString(item.snippet) ?? asString(item.description) ?? asString(item.caption);
           const thumbnail = asString(item.thumbnailUrl) ?? asString((item.thumbnail as JsonRecord | undefined)?.url);
           const date = asString(item.lastUpdatedAt) ?? asString(item.crawledAt);

@@ -73,3 +73,20 @@ Search rate limiting is scoped to a random browser-tab session identifier stored
 `sessionStorage`; the backend hashes it before using it as a limiter key and falls back to the
 client IP when the header is absent or invalid. No account, cookie, or paid state store is
 required.
+
+## Ignite 2026 API update
+
+The Functions package uses `@microsoft/webiq` 1.2.1 and imports the same endpoint
+registry as Express, including Auto/Advanced, the weather preset, Places and
+Commerce private preview. Deployment sets a 60-second SDK wall-clock budget for
+Advanced retrieval. The existing AppID/key is reused; deployment cannot grant
+Commerce, full-document, premium publisher, management API, or Zero Query Logging
+access. These service permissions may require separate operator action.
+
+Validation includes `npm test`: SDK payload forwarding, bounds/scope behavior,
+typechecked generated examples, and attributed structured result rendering.
+After publishing, `server/scripts/smoke.mjs` exercises live Auto/Advanced, weather,
+Places, all existing search types, Browse, missing-scope fail-closed behavior and
+Commerce (including identifier follow-ups when available). A Commerce 403 is an
+explicit preview-access warning, not a deployment failure. The pipeline also
+fetches the deployed frontend bundle and checks the new feature surfaces.

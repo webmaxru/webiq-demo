@@ -64,19 +64,28 @@ function validateParam(
         return undefined;
       }
 
-      if (value.length > env.maxInputLength) {
+      if (value.length > Math.min(env.maxInputLength, param.maxLength ?? env.maxInputLength)) {
         issues.push(
-          `${param.name} exceeds the maximum length of ${env.maxInputLength} characters.`,
+          `${param.name} exceeds the maximum length of ${Math.min(env.maxInputLength, param.maxLength ?? env.maxInputLength)} characters.`,
         );
         return undefined;
       }
 
       return value.trim();
 
+    case 'stringList': {
+      const values = coerceStringArray(value);
+      if (!values || values.length > 250 || values.some((item) => item.length > env.maxInputLength)) {
+        issues.push(`${param.name} must contain at most 250 strings, each at most ${env.maxInputLength} characters.`);
+        return undefined;
+      }
+      return values;
+    }
+
     case 'number': {
       const numberValue = typeof value === 'number' ? value : Number(value);
-      if (!Number.isFinite(numberValue)) {
-        issues.push(`${param.name} must be a number.`);
+      if (!Number.isInteger(numberValue)) {
+        issues.push(`${param.name} must be an integer.`);
         return undefined;
       }
 
@@ -140,9 +149,9 @@ export function validateAndCoerce(
 
   if (!normalizedInput) {
     issues.push(`${descriptor.inputLabel} is required.`);
-  } else if (normalizedInput.length > env.maxInputLength) {
+  } else if (normalizedInput.length > Math.min(env.maxInputLength, descriptor.kind === 'url' ? env.maxInputLength : 1000)) {
     issues.push(
-      `${descriptor.inputLabel} exceeds the maximum length of ${env.maxInputLength} characters.`,
+      `${descriptor.inputLabel} exceeds the maximum length of ${Math.min(env.maxInputLength, descriptor.kind === 'url' ? env.maxInputLength : 1000)} characters.`,
     );
   } else if (descriptor.kind === 'url') {
     try {
@@ -161,9 +170,36 @@ export function validateAndCoerce(
   const opts: Record<string, unknown> = {};
 
   for (const param of descriptor.params) {
-    const coerced = validateParam(param, params[param.name], issues);
+    const coerced = validateParam(param, params[param.name] === undefined ? param.default : params[param.name], issues);
     if (coerced !== undefined) {
       opts[param.name] = coerced;
+    }
+  }
+
+  for (const name of ['language', 'region']) {
+    if (typeof opts[name] === 'string' && !/^[a-z]{2}$/i.test(opts[name])) {
+      issues.push(`${name} must be a two-letter code.`);
+    }
+  }
+  if (typeof opts.scopeName === 'string' && !/^[A-Za-z0-9._-]{1,128}$/.test(opts.scopeName)) {
+    issues.push('scopeName must contain 1-128 ASCII letters, digits, periods, underscores or hyphens.');
+  }
+  if (typeof opts.location === 'string') {
+    const match = /^lat:(-?\d+(?:\.\d+)?);long:(-?\d+(?:\.\d+)?)$/.exec(opts.location);
+    if (!match || Math.abs(Number(match[1])) > 90 || Math.abs(Number(match[2])) > 180) {
+      issues.push('location must use lat:<latitude>;long:<longitude> with valid coordinates.');
+    }
+  }
+  if (descriptor.id === 'browse' && (opts.contentFormat === 'passage' || opts.contentFormat === undefined) && !opts.query) {
+    issues.push('query is required for Browse passage selection.');
+  }
+  if (descriptor.id === 'browse' && opts.renderDynamicPages === true && opts.liveCrawl !== 'fallback') {
+    issues.push('renderDynamicPages requires liveCrawl=fallback.');
+  }
+  if (descriptor.id.startsWith('commerce')) {
+    const market = `${opts.language ?? 'en'}-${opts.region ?? 'US'}`.toLowerCase();
+    if (!['en-us', 'es-us', 'en-ca', 'fr-ca', 'en-gb', 'de-de', 'fr-fr', 'en-au', 'ja-jp'].includes(market)) {
+      issues.push('This language/region combination is not supported by Commerce private preview.');
     }
   }
 

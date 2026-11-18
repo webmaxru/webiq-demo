@@ -15,6 +15,7 @@ export function TextField({ param, value, onChange }: TextFieldProps) {
       <input
         className="input mt-1"
         id={id}
+        maxLength={param.maxLength}
         onChange={(event) => onChange(event.target.value)}
         placeholder={param.placeholder}
         type="text"

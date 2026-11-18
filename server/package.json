@@ -5,7 +5,7 @@
   "type": "commonjs",
   "description": "Express backend proxy for the Web IQ sandbox.",
   "engines": {
-    "node": ">=22"
+    "node": "^22.13.0 || >=24"
   },
   "main": "dist/index.js",
   "scripts": {
@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@microsoft/webiq": "^0.1.0",
+    "@microsoft/webiq": "^1.2.1",
     "applicationinsights": "^3.15.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",

@@ -1,3 +1,4 @@
+import type { ImageSearchOptions } from '@microsoft/webiq';
 import type { EndpointDescriptor } from './types';
 import { buildSdkOptions } from './types';
 
@@ -9,6 +10,7 @@ export const imagesEndpoint: EndpointDescriptor = {
   inputLabel: 'Query',
   inputPlaceholder: 'Seattle skyline',
   resultKey: 'imageResults',
+  documentationUrl: 'https://learn.microsoft.com/web-iq/reference/image-search',
   params: [
     { name: 'maxResults', label: 'Max results', type: 'number', default: 12, min: 1, max: 30, step: 1, description: 'Images to return (SDK default 30).' },
     { name: 'language', label: 'Language', type: 'string', placeholder: 'en', description: 'ISO 639-1 language code.' },
@@ -24,6 +26,6 @@ export const imagesEndpoint: EndpointDescriptor = {
     { name: 'minWidth', label: 'Min width', type: 'number', min: 1, step: 1, description: 'Minimum image width in pixels.' },
   ],
   invoke(client, input, opts, signal) {
-    return client.images.search(input, buildSdkOptions(this.params, opts, signal) as any);
+    return client.images.search(input, buildSdkOptions(this.params, opts, signal) as ImageSearchOptions);
   },
 };

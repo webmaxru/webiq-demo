@@ -36,6 +36,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
+      - run: npm test
       - run: npm run build
 
   deploy:
@@ -126,7 +127,7 @@ jobs:
             --settings \
               WEBIQ_API_KEY="$WEBIQ_API_KEY" \
               FUNCTIONS_NODE_BLOCK_ON_ENTRY_POINT_ERROR="true" \
-              WEBIQ_TIMEOUT_MS="15000" \
+              WEBIQ_TIMEOUT_MS="60000" \
               RATE_LIMIT_SEARCH_MAX="15" \
               RATE_LIMIT_WINDOW_MS="60000" \
             --only-show-errors \
@@ -199,21 +200,7 @@ jobs:
             sleep 10
           done
 
-          RESPONSE_FILE=$(mktemp)
-          STATUS=$(curl \
-            --silent \
-            --show-error \
-            --max-time 120 \
-            --output "$RESPONSE_FILE" \
-            --write-out "%{http_code}" \
-            --header "Content-Type: application/json" \
-            --data '{"input":"Microsoft Web IQ","params":{"maxResults":1}}' \
-            "${{ steps.hosting.outputs.api_url }}/api/search/web")
-          if [ "$STATUS" != "200" ]; then
-            echo "::error::Functions backend verification failed with HTTP $STATUS."
-            cat "$RESPONSE_FILE"
-            exit 1
-          fi
+          node server/scripts/smoke.mjs "${{ steps.hosting.outputs.api_url }}"
 
           echo "Azure Functions backend: ${{ steps.hosting.outputs.api_url }}"
 
@@ -259,6 +246,23 @@ jobs:
             --output none
 
           echo "Frontend preview: $FRONTEND_URL"
+
+          FRONTEND_URL="$FRONTEND_URL" node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          const response = await fetch(process.env.FRONTEND_URL, { signal: AbortSignal.timeout(30_000) });
+          assert.equal(response.status, 200);
+          const html = await response.text();
+          assert.ok(html.includes('Web IQ'));
+          const asset = html.match(/src="([^"]*\/assets\/[^"]+\.js)"/)?.[1];
+          assert.ok(asset, 'Frontend JavaScript bundle missing');
+          const bundleResponse = await fetch(new URL(asset, process.env.FRONTEND_URL));
+          assert.equal(bundleResponse.status, 200);
+          const bundle = await bundleResponse.text();
+          for (const feature of ['commerce-offers', 'commerce-details', 'structured/weather', 'failOnMissingScope']) {
+            assert.ok(bundle.includes(feature), `Deployed frontend missing ${feature}`);
+          }
+          console.log('Deployed frontend contains all new feature surfaces.');
+          NODE
 
           CORS_HEADER=$(curl \
             --silent \

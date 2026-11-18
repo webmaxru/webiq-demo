@@ -1,5 +1,6 @@
 import { formatDate } from '../../lib/format';
 import { GenericCards, type JsonRecord } from './GenericCards';
+import { httpUrl } from './StructuredData';
 
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
@@ -17,7 +18,7 @@ export function NewsResults({ data }: { data: JsonRecord }) {
       {items.map((item, index) => {
         const record = item as JsonRecord;
         const thumbnail = record.thumbnail as JsonRecord | undefined;
-        const url = asString(record.url);
+        const url = httpUrl(record.clickUrl) ?? httpUrl(record.url);
 
         return (
           <article className="border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900" key={`${url ?? index}`}>

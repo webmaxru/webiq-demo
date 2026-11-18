@@ -1,7 +1,7 @@
 import { ThemeToggle } from './ThemeToggle';
 
 const GITHUB_URL = 'https://github.com/webmaxru/webiq-demo';
-const WAITLIST_URL = 'https://www.microsoft.com/en-us/webiq';
+const DOCS_URL = 'https://learn.microsoft.com/web-iq/';
 
 export function Header() {
   return (
@@ -35,11 +35,11 @@ export function Header() {
           </a>
           <a
             className="btn-primary"
-            href={WAITLIST_URL}
+            href={DOCS_URL}
             rel="noreferrer"
             target="_blank"
           >
-            Join waitlist
+            Documentation
           </a>
         </div>
       </div>

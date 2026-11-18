@@ -1,150 +1,85 @@
-const WEBIQ_URL = 'https://www.microsoft.com/en-us/webiq';
-const NPM_URL = 'https://www.npmjs.com/package/@microsoft/webiq';
-const API_BASE_URL = 'https://api.microsoft.ai/v3';
+import type { EndpointMeta } from '../types/meta';
 
-interface Capability {
-  name: string;
-  detail: string;
-}
-
-// Plain-language summary of what each Web IQ endpoint returns, so developers
-// know what they are actually exercising in each tab.
-const CAPABILITIES: Capability[] = [
-  {
-    name: 'Web Search',
-    detail:
-      'Webpages plus their readable, extracted content (Markdown, HTML, plain text, or passage-level) — tunable by freshness, language, region, and location.',
-  },
-  {
-    name: 'News Search',
-    detail: 'Current news articles with snippets, publisher/source, and thumbnails.',
-  },
-  {
-    name: 'Video Search',
-    detail:
-      'Videos with descriptions, view counts, key moments, and thumbnails — with duration, resolution, and freshness filters, plus optional playlists.',
-  },
-  {
-    name: 'Image Search',
-    detail:
-      'Images with visual filters (aspect ratio, color, size, watermark-free) and safe-search controls.',
-  },
-  {
-    name: 'Browse Fetch',
-    detail:
-      'Fetches one specific URL and transforms it into clean, LLM-ready content — with optional live crawl and dynamic-page rendering.',
-  },
-  {
-    name: 'Classic Search',
-    detail:
-      'A single multi-answer call that returns several answer types at once (web, news, images …) together with query signals.',
-  },
+const LEARN = 'https://learn.microsoft.com/web-iq';
+const ANNOUNCEMENT = 'https://techcommunity.microsoft.com/blog/azuredevcommunityblog/whats-new-with-web-iq-ignite-2026-edition/4574183';
+const scenarios = [
+  { id: 'auto', title: 'Ask once. Retrieve across sources.', detail: 'Auto returns evidence with per-result citations. Switch to Advanced for questions that need iterative retrieval.' },
+  { id: 'weather', title: 'Plan with live weather and local time.', detail: 'Inspect conditions, forecasts, weather alerts and time zones as structured data, with units and source attribution.' },
+  { id: 'places', title: 'Explore the world around a location.', detail: 'Find places with addresses, opening hours, reviews, photos, amenities and useful actions.' },
+  { id: 'commerce', title: 'Compare products and merchant offers.', detail: 'Private preview: search products, then look up offers and product details with the identifiers returned.' },
 ];
 
-interface Reason {
-  title: string;
-  detail: string;
-}
-
-const REASONS: Reason[] = [
-  {
-    title: 'Grounding & RAG',
-    detail:
-      'Replace a model’s stale, fixed knowledge with fresh, real-world web data — reducing hallucinations and letting agents cite their sources.',
-  },
-  {
-    title: 'Passage-level retrieval',
-    detail:
-      'Returns only the most relevant passages instead of whole pages — improving answer quality while cutting token usage.',
-  },
-  {
-    title: 'Citation-ready & structured',
-    detail:
-      'Every result carries its URL and metadata, so your agent can attribute, verify, and link back to the original content.',
-  },
-  {
-    title: 'Fine-grained control',
-    detail:
-      'You decide how results feed the LLM — tune freshness, region, language, content format, and safe-search on every call.',
-  },
-];
-
-export function AboutWebIQ() {
+export function AboutWebIQ({ endpoints, onSelect }: { endpoints: EndpointMeta[]; onSelect: (endpoint: EndpointMeta) => void }) {
   return (
-    <section className="card space-y-6 p-6 sm:p-8">
-      <div className="space-y-2">
-        <span className="badge bg-brand-50 text-brand-700 ring-brand-200 dark:bg-brand-600/20 dark:text-brand-100 dark:ring-brand-500/40">
-          What is Web IQ?
-        </span>
-        <h2 className="text-3xl font-bold tracking-tight text-ink-950 dark:text-white">
-          Ground AI agents in the live web
-        </h2>
-      </div>
-
-      <p className="text-sm leading-6 text-ink-700 dark:text-ink-300">
-        <a
-          className="font-semibold text-brand-600 hover:underline dark:text-brand-300"
-          href={WEBIQ_URL}
-          rel="noreferrer"
-          target="_blank"
-        >
-          Microsoft Web IQ
-        </a>{' '}
-        is a next-generation, <strong>agent-native grounding platform</strong> — a set of APIs that
-        give LLMs and AI agents direct, real-time access to high-quality web content. Unlike
-        traditional search, it returns <strong>structured, citation-ready semantic data</strong>{' '}
-        with passage-level retrieval, so you keep full control over how results feed your LLM
-        workflow — improving answer quality while reducing token usage.
-      </p>
-
-      <div className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
-          Why developers ground with Web IQ
-        </h3>
-        <ul className="grid gap-3 sm:grid-cols-2">
-          {REASONS.map((reason) => (
-            <li key={reason.title} className="bg-ink-50 p-3 dark:bg-ink-800/60">
-              <p className="text-sm font-semibold text-ink-900 dark:text-ink-100">{reason.title}</p>
-              <p className="mt-1 text-xs leading-5 text-ink-600 dark:text-ink-400">{reason.detail}</p>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
-          What you’re testing in this sandbox
-        </h3>
-        <ul className="space-y-2">
-          {CAPABILITIES.map((capability) => (
-            <li key={capability.name} className="flex gap-2 text-sm leading-6 text-ink-700 dark:text-ink-300">
-              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" />
-              <span>
-                <strong className="text-ink-900 dark:text-ink-100">{capability.name}</strong> — {capability.detail}
-              </span>
-            </li>
-          ))}
-        </ul>
-        <p className="text-xs leading-5 text-ink-500 dark:text-ink-400">
-          Pick an endpoint from the menu to start. For every run, this sandbox shows the live
-          results, the raw JSON the API returns, ready-to-run{' '}
-          <code className="font-mono">@microsoft/webiq</code> SDK code, and latency/telemetry — so
-          you see exactly what your agent would receive.
+    <section className="card space-y-7 p-6 sm:p-8">
+      <header className="space-y-3">
+        <span className="badge bg-brand-50 text-brand-700 ring-brand-200 dark:bg-brand-600/20 dark:text-brand-100 dark:ring-brand-500/40">Ignite 2026 edition</span>
+        <h2 className="text-3xl font-bold tracking-tight text-ink-950 dark:text-white sm:text-4xl">Fresh evidence for your next agent.</h2>
+        <p className="text-sm leading-7 text-ink-700 dark:text-ink-300">
+          Microsoft Web IQ grounds AI applications in the live web. Explore Auto and Auto Advanced,
+          structured weather, Places, Commerce and specialized retrieval in one sandbox.
+          Web IQ retrieves evidence, not a final AI answer; your model decides how to use it.
         </p>
+        <a className="inline-block text-sm font-semibold text-brand-600 hover:underline dark:text-brand-300" href={ANNOUNCEMENT} target="_blank" rel="noreferrer">Read the Ignite announcement</a>
+      </header>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {scenarios.map((scenario) => {
+          const endpoint = endpoints.find((item) => item.id === scenario.id);
+          return (
+            <button key={scenario.id} className="space-y-2 border border-ink-200 p-4 text-left transition hover:border-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:border-ink-700 dark:hover:border-brand-400" onClick={() => endpoint && onSelect(endpoint)} type="button">
+              <span className="block text-xs font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-300">{endpoint?.label}</span>
+              <span className="block font-semibold text-ink-950 dark:text-white">{scenario.title}</span>
+              <span className="block text-sm leading-6 text-ink-600 dark:text-ink-400">{scenario.detail}</span>
+            </button>
+          );
+        })}
       </div>
 
-      <p className="border border-ink-100 bg-ink-50 px-3 py-2 text-xs leading-5 text-ink-500 dark:border-ink-800 dark:bg-ink-800/60 dark:text-ink-400">
-        Web IQ is in <strong>limited-access preview</strong>. Calls are authenticated with a Web IQ
-        API key and sent to <code className="font-mono">{API_BASE_URL}</code>. Learn more on the{' '}
-        <a className="font-semibold text-brand-600 hover:underline dark:text-brand-300" href={WEBIQ_URL} rel="noreferrer" target="_blank">
-          official Web IQ page
-        </a>{' '}
-        or the{' '}
-        <a className="font-semibold text-brand-600 hover:underline dark:text-brand-300" href={NPM_URL} rel="noreferrer" target="_blank">
-          <code className="font-mono">@microsoft/webiq</code> SDK
-        </a>
-        .
-      </p>
+      <div className="space-y-3 text-sm leading-6 text-ink-700 dark:text-ink-300">
+        <h3 className="text-lg font-bold text-ink-950 dark:text-white">Specialized retrieval, updated</h3>
+        <p>
+          Web, News, Images and Videos retain fine-grained controls. Web and News now default to
+          query-focused passages. Browse extracts passages from a known URL using a selection query;
+          full-document text, HTML and Markdown require full document access on the server AppID.
+          Classic Search has been replaced by Auto in the current SDK.
+        </p>
+        <p>Every request exposes rendered results, raw JSON, copyable TypeScript SDK code and request telemetry. The API key stays on the server.</p>
+      </div>
+
+      <div className="space-y-4 border-t border-ink-200 pt-5 text-sm leading-6 text-ink-700 dark:border-ink-700 dark:text-ink-300">
+        <h3 className="text-lg font-bold text-ink-950 dark:text-white">Control sources. Understand access.</h3>
+        <p><strong>Named Scopes:</strong> select a published scope in Web, News or Auto. Keep “Require scope” enabled to prevent unscoped fallback. Auto scopes affect only Web and News evidence. Scope management requires billing-account permissions and is intentionally not exposed through this public demo. <a className="text-brand-600 hover:underline dark:text-brand-300" href={`${LEARN}/guides/create-scopes`} target="_blank" rel="noreferrer">Scopes guide</a></p>
+        <p><strong>Health-aware ranking:</strong> Web IQ automatically prioritizes credible sources for health-related questions. This is retrieval, not medical advice. Do not enter personal health information.</p>
+        <p><strong>Premium Content:</strong> premium publisher content and bring-your-own licensed data require arrangements with Microsoft; this demo cannot grant publisher rights or enable them per request.</p>
+        <p><strong>Zero Query Logging:</strong> a support-approved service setting, not a query toggle. The sandbox analytics opt-out does not disable Microsoft service logging. <a className="text-brand-600 hover:underline dark:text-brand-300" href={`${LEARN}/resources/faq#privacy-and-data-handling`} target="_blank" rel="noreferrer">Privacy and logging</a></p>
+      </div>
+
+      <details className="border border-ink-200 p-4 text-sm dark:border-ink-700">
+        <summary className="cursor-pointer font-semibold text-ink-900 dark:text-ink-100">Connect your agent over MCP</summary>
+        <p className="mt-3 leading-6 text-ink-600 dark:text-ink-300">Use your own key in your MCP client, never this demo’s server credential. Available tools depend on your AppID permissions. This configuration is an example, not a connection made by this page.</p>
+        <pre className="mt-3 overflow-x-auto bg-ink-950 p-4 text-xs text-ink-100"><code>{JSON.stringify({
+          servers: {
+            WebIQ: {
+              type: 'http',
+              url: 'https://api.microsoft.ai/v3/mcp',
+              headers: { 'x-apikey': '<your-api-key>' },
+            },
+          },
+        }, null, 2)}</code></pre>
+        <a className="mt-3 inline-block font-semibold text-brand-600 hover:underline dark:text-brand-300" href={`${LEARN}/integrations/mcp`} target="_blank" rel="noreferrer">MCP setup for VS Code and other clients</a>
+      </details>
+
+      <div className="space-y-2 border border-ink-200 bg-ink-50 p-4 text-xs leading-6 text-ink-600 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-300">
+        <p><strong>Generally available:</strong> Auto, Web, News, Images, Videos, Places and Browse. Commerce is private preview and may return an access error for this demo’s AppID.</p>
+        <p>Published API prices per 1,000 calls: Browse $1; Web, News, Images, Videos and Places $7; Auto $8; Advanced $9; Commerce preview $7. This shared sandbox is rate limited; pricing applies to your own Web IQ usage.</p>
+        <div className="flex flex-wrap gap-4 font-semibold text-brand-600 dark:text-brand-300">
+          <a className="hover:underline" href={`${LEARN}/get-started/quickstart`} target="_blank" rel="noreferrer">Get started</a>
+          <a className="hover:underline" href={`${LEARN}/resources/pricing`} target="_blank" rel="noreferrer">Pricing</a>
+          <a className="hover:underline" href="https://webiq.microsoft.ai/scopes" target="_blank" rel="noreferrer">Manage scopes</a>
+          <a className="hover:underline" href="https://aka.ms/microsoft-webiq-support" target="_blank" rel="noreferrer">Access and support</a>
+        </div>
+      </div>
     </section>
   );
 }

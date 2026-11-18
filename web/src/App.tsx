@@ -200,7 +200,7 @@ export default function App() {
             </div>
           ) : null}
           {view === 'home' ? (
-            <AboutWebIQ />
+            <AboutWebIQ endpoints={endpointMetadata} onSelect={applyEndpoint} />
           ) : selectedEndpoint ? (
             <>
               {apiKeyMissing ? <ApiKeyBanner /> : null}
@@ -211,12 +211,17 @@ export default function App() {
                     <span className="badge bg-ink-100 text-ink-700 ring-ink-200 dark:bg-ink-800 dark:text-ink-200 dark:ring-ink-700">{selectedEndpoint.kind}</span>
                   </div>
                   <p className="mt-2 text-sm leading-6 text-ink-600 dark:text-ink-400">{selectedEndpoint.description}</p>
+                  {selectedEndpoint.documentationUrl ? (
+                    <a className="mt-2 inline-block text-sm font-semibold text-brand-600 hover:underline dark:text-brand-300" href={selectedEndpoint.documentationUrl} target="_blank" rel="noreferrer">API documentation</a>
+                  ) : null}
+                  {selectedEndpoint.notice ? <p className="mt-3 border border-brand-200 bg-brand-50 p-3 text-xs leading-5 text-ink-700 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200">{selectedEndpoint.notice}</p> : null}
                 </div>
                 <label className="block" htmlFor="primary-input">
                   <span className="text-sm font-semibold text-ink-800 dark:text-ink-200">{selectedEndpoint.inputLabel}</span>
                   <input
                     className="input mt-2 py-3 text-base"
                     id="primary-input"
+                    maxLength={selectedEndpoint.kind === 'url' ? 2048 : 1000}
                     onChange={(event) => setInput(event.target.value)}
                     placeholder={selectedEndpoint.inputPlaceholder}
                     type={selectedEndpoint.kind === 'url' ? 'url' : 'search'}
@@ -233,7 +238,9 @@ export default function App() {
                 <RunBar disabled={input.trim() === ''} loading={loading} onCancel={cancel} onRun={handleRun} telemetry={telemetry} />
                 <p className="text-xs leading-5 text-ink-500 dark:text-ink-400">
                   Heads up: requests you run here are logged anonymously — the endpoint, timing,
-                  and outcome (never your query text) — for usage statistics. No cookies are used;
+                  and outcome (not query text in usage analytics) — for usage statistics. Queries are
+                  sent to Microsoft Web IQ, whose service logging is separate. Do not enter sensitive
+                  or personal health information. No cookies are used;
                   see our{' '}
                   <a className="font-semibold text-brand-600 hover:underline dark:text-brand-300" href="/privacy">
                     privacy notice

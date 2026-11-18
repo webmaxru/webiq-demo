@@ -7,7 +7,7 @@ import {
   setAnalyticsOptedOut,
 } from '../lib/analyticsConsent';
 
-const LAST_UPDATED = '19 June 2026';
+const LAST_UPDATED = '18 November 2026';
 const AUTHOR_URL = 'https://www.linkedin.com/in/webmax';
 const REPO_URL = 'https://github.com/webmaxru/webiq-demo';
 
@@ -119,7 +119,12 @@ export function PrivacyPolicy() {
             <p className="text-sm leading-6 text-ink-700 dark:text-ink-300">
               We use <strong>Microsoft Azure</strong> as our processor for hosting (Azure Container
               Apps) and telemetry (Application Insights). When you run a search, your query text is
-              sent to the <strong>Microsoft Web IQ</strong> API to return results. Microsoft may
+              sent to the <strong>Microsoft Web IQ</strong> API to return results. Production hosting
+              uses Azure Functions and Azure Static Web Apps; the Container Apps path is an alternative.
+              Microsoft Web IQ normally logs queries for service operations. Zero Query Logging
+              requires separate approval from Microsoft and is not enabled or guaranteed by this
+              sandbox or the analytics opt-out. Do not submit confidential data or personal health
+              information. Microsoft may
               process data inside and outside the EEA under its Data Protection Addendum and EU
               Standard Contractual Clauses. We do not sell your data or share it with advertisers.
             </p>

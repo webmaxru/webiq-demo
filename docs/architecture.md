@@ -1,5 +1,11 @@
 # Architecture
 
+Production currently runs the shared descriptor/validation/SDK code through
+`functions/src/index.ts` on Azure Functions Consumption. The Express/Container Apps
+path below remains a local-development and manual-deployment alternative; see
+[Azure Functions backend](./azure-functions-backend.md). Both paths use SDK 1.2.1
+and the same generated frontend metadata.
+
 The Web IQ Sandbox is an interactive developer playground for the
 [Microsoft Web IQ](https://www.microsoft.com/en-us/webiq) grounding APIs, built on the
 official [`@microsoft/webiq`](https://www.npmjs.com/package/@microsoft/webiq) TypeScript
@@ -46,7 +52,7 @@ webiq-demo/
 | `src/telemetry.ts` | `AsyncLocalStorage` that correlates the SDK `telemetryHook` events to the in-flight request; `runWithTelemetry`, `summarizeTelemetry`, `telemetryEventsFromError`. |
 | `src/contract.ts` | **The HTTP contract** (`ParamMeta`, `EndpointMeta`, `TelemetryInfo`, `SearchSuccess`/`SearchFailure`). Mirrored verbatim by the frontend. |
 | `src/endpoints/types.ts` | `EndpointDescriptor` (extends `EndpointMeta` + `invoke`), `toMeta`, `buildSdkOptions`. |
-| `src/endpoints/*.ts` | One descriptor per endpoint (web, news, videos, images, browse, classic). |
+| `src/endpoints/*.ts` | Auto, weather preset, Places, Commerce Search/Offers/Details, web, news, videos, images, Browse. Shared locale/scope/site parameter metadata is in `shared.ts`. |
 | `src/endpoints/registry.ts` | Ordered array of all descriptors + `getDescriptor(id)`. Single source of truth. |
 | `scripts/generateWebMeta.ts` | Build-time generator that strips server-only invocation functions and emits the web metadata module. It is not part of the API runtime build. |
 | `src/validation.ts` | `validateAndCoerce` — per-descriptor range/enum/url checks, type coercion, and input/string length caps (`maxInputLength`). |
@@ -102,9 +108,17 @@ Every endpoint is a **declarative descriptor**. Adding a new Web IQ endpoint is 
    Results render via `GenericCards` when `resultKey` points at an array; for a bespoke
    layout add `web/src/components/results/<Name>.tsx` and map it in `ResultsPanel.tsx`.
 
-`ParamMeta.type` is one of `string | number | boolean | enum | multiEnum`. Enum params
+`ParamMeta.type` is one of `string | stringList | number | boolean | enum | multiEnum`. Enum params
 carry `options` (the **values** sent to the API) and an optional `enumImport` (the SDK
 enum name, used by codegen to render `EnumName.MEMBER`).
+
+Descriptors can add a documentation link and access notice. Server-only `sdkMethod`
+and `lookup` fields let presets and Commerce identifier lookups generate the correct
+SDK call. Auto renders each typed evidence object with its own citations; Places and
+Commerce have dedicated attributed result cards. The contract still preserves the
+original upstream payload for raw JSON inspection. Missing fields are unavailable,
+not zero. Scope fallback is fail-closed by default and a reported unscoped result
+is explicitly flagged. Classic Search was removed with the SDK upgrade.
 
 ## Configuration
 
@@ -113,7 +127,7 @@ enum name, used by codegen to render `EnumName.MEMBER`).
 | `WEBIQ_API_KEY` | yes | — | Web IQ API key. Server-side only; a Container App secret in prod. |
 | `PORT` | no | `3001` (local), `8080` (container) | Backend HTTP port. |
 | `WEB_ORIGIN` / `WEB_ORIGINS` | no | `http://localhost:5173` | One CORS origin or a comma-separated origin list. Bicep supplies the SWA origins in production. |
-| `WEBIQ_TIMEOUT_MS` | no | `15000` | Per-request SDK wall-clock budget (incl. retries). |
+| `WEBIQ_TIMEOUT_MS` | no | `60000` | Per-request SDK wall-clock budget (incl. retries and Auto Advanced). |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | no | — | App Insights telemetry. A Container App secret in prod; unset ⇒ telemetry disabled. |
 | `WEBIQ_ANON_SALT` | no | built-in | Salt for the anonymous visitor id used in engagement stats. |
 | `WEBIQ_MAX_INPUT_LENGTH` | no | `2048` | Max input/string-param length before rejection (abuse signal). |

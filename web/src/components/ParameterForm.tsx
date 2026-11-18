@@ -41,7 +41,7 @@ export function ParameterForm({ params, values, onChange, onReset }: ParameterFo
   }
 
   return (
-    <details className="group">
+    <details className="group" open>
       <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold uppercase tracking-wide text-ink-500 hover:text-ink-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:text-ink-400 dark:hover:text-ink-100 dark:focus-visible:ring-offset-ink-950 [&::-webkit-details-marker]:hidden">
         <svg
           aria-hidden="true"
@@ -120,7 +120,7 @@ export function ParameterForm({ params, values, onChange, onReset }: ParameterFo
               key={param.name}
               onChange={(nextValue) => onChange(param.name, nextValue)}
               param={param}
-              value={typeof value === 'string' ? value : ''}
+              value={param.type === 'stringList' && Array.isArray(value) ? value.join(', ') : typeof value === 'string' ? value : ''}
             />
           );
         })}

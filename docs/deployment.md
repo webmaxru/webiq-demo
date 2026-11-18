@@ -1,5 +1,12 @@
 # Deployment & operations
 
+> **Current production:** Azure Functions Consumption owns the backend and the SWA
+> frontend deployment. Use `.github/workflows/deploy-azure-functions.yml` (push to
+> `main`) for redeploys; see [Functions deployment](./azure-functions-backend.md).
+> The Container Apps pipeline described below is a manual alternative. Do not
+> dispatch both: they publish to the same frontend. The Functions deployment sets
+> `WEBIQ_TIMEOUT_MS=60000` for Auto Advanced.
+
 Production uses two independently scalable Azure services:
 
 - **Azure Static Web Apps (Free)** hosts the React/Vite frontend.

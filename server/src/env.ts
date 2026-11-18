@@ -45,7 +45,7 @@ export const env = {
   port: parseNumber(process.env.PORT, 3001),
   webOrigin: webOrigins[0] || 'http://localhost:5173',
   webOrigins,
-  timeoutMs: parseNumber(process.env.WEBIQ_TIMEOUT_MS, 15000),
+  timeoutMs: parseNumber(process.env.WEBIQ_TIMEOUT_MS, 60000),
   keyConfigured: Boolean(apiKey),
   authMode: apiKey ? 'apiKey' : 'none',
   // Number of reverse-proxy hops to trust for X-Forwarded-For (Container Apps

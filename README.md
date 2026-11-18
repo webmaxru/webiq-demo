@@ -2,8 +2,8 @@
 
 An interactive developer **sandbox** for [Microsoft **Web IQ**](https://aka.ms/WebIQ) — a
 suite of AI-native grounding APIs that connect agents to fresh, real-world intelligence
-from across the web (web pages, news, images, videos, browse, and classic multi-answer
-search).
+from across the web: Auto/Advanced, weather, Places, web pages, news, images, videos,
+Browse, and Commerce private preview.
 
 This app is a **playground**: pick an endpoint, tweak every SDK parameter from a UI, fire
 a live request, and inspect rendered results, the **raw JSON**, a copy-paste **SDK code
@@ -27,7 +27,14 @@ The browser never sees your API key — all SDK calls run on the backend.
 
 ## Features
 
-- **All Web IQ endpoints**: `web`, `news`, `videos`, `images`, `browse`, `classic`.
+- **Auto and Auto Advanced** with typed, per-result cited evidence; a Weather & Time Zones preset.
+- **Places** with addresses, hours, reviews, provider attribution and photos.
+- **Commerce private preview**: product search, offers and product details; exact attributed
+  offer links and currency-aware minor-unit pricing. Requires an enabled server AppID.
+- **Updated specialized APIs**: `web`, `news`, `videos`, `images`, `browse`, with passage
+  defaults, Browse selection queries, date filters, named Scopes and inline site filters.
+- **Access-aware onboarding**: GA/preview status, current pricing, MCP configuration,
+  health-aware ranking and support-managed Premium Content/Zero Query Logging guidance.
 - **Interactive parameter forms** generated dynamically from server-described metadata
   (every SDK option, with ranges, enums, and defaults).
 - **Rendered result cards** with thumbnails and video/image previews, plus a generic
@@ -60,7 +67,7 @@ The browser never sees your API key — all SDK calls run on the backend.
 
 ## Prerequisites
 
-- **Node.js >= 22** and **npm >= 10** (required by the `@microsoft/webiq` SDK).
+- **Node.js 22.13+ (22.x) or >= 24** and **npm >= 10** (required by the `@microsoft/webiq` SDK).
 - A **Web IQ API key**. Request access / get a key at <https://aka.ms/WebIQ>.
 - (Optional) **Docker** + **Docker Compose** for the containerized run.
 
@@ -95,6 +102,7 @@ shows a banner and API calls return a clear configuration error.
 | `npm run build` | Type-check and build both workspaces |
 | `npm run typecheck` | Type-check both workspaces |
 | `npm run lint` | ESLint across the repo |
+| `npm test` | SDK wire payload, validation, generated snippet and result-rendering regressions |
 | `npm run format` | Prettier write |
 | `npm run docker:up` / `npm run docker:down` | Build & run / stop the Docker stack |
 
@@ -109,7 +117,7 @@ All configuration is via environment variables (see [`.env.example`](./.env.exam
 | `WEBIQ_API_KEY` | **yes** | — | Your Web IQ API key. Kept server-side only. |
 | `PORT` | no | `3001` | Backend HTTP port. |
 | `WEB_ORIGIN` / `WEB_ORIGINS` | no | `http://localhost:5173` | Allowed CORS origin, or comma-separated origins. Bicep injects the SWA origins in Azure. |
-| `WEBIQ_TIMEOUT_MS` | no | `15000` | Per-request SDK timeout (wall-clock budget incl. retries). |
+| `WEBIQ_TIMEOUT_MS` | no | `60000` | Per-request SDK timeout (wall-clock budget incl. retries); allows Auto Advanced retrieval. |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | no | — | App Insights telemetry + abuse events. Injected automatically in Azure; unset ⇒ disabled. |
 | `WEBIQ_ANON_SALT` | no | built-in | Salt for the anonymised visitor id used in engagement stats. |
 | `WEBIQ_MAX_INPUT_LENGTH` | no | `2048` | Max characters for the search input before rejection (abuse signal). |
@@ -137,7 +145,16 @@ Stop with `npm run docker:down`.
 
 ---
 
-## Deploy to Azure (Static Web Apps + Container Apps)
+## Production deployment
+
+The current production backend is **Azure Functions Consumption**, with the same
+Static Web Apps frontend. Pushes to `main` run
+`.github/workflows/deploy-azure-functions.yml`; see
+[Azure Functions deployment](./docs/azure-functions-backend.md). This is the redeploy
+path. Container Apps below is retained as a **manual alternative**, not a second
+automatic production deployment.
+
+## Alternative: Static Web Apps + Container Apps
 
 Production is split into two services:
 

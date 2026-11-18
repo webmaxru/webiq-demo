@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Interactive developer sandbox showcasing Microsoft Web IQ grounding APIs.",
   "engines": {
-    "node": ">=22",
+    "node": "^22.13.0 || >=24",
     "npm": ">=10"
   },
   "workspaces": [
@@ -26,6 +26,7 @@
     "start": "npm run start -w server",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w web && npm run typecheck -w functions",
     "lint": "eslint .",
+    "test": "tsx --tsconfig web/tsconfig.json --test server/test/*.test.ts",
     "format": "prettier --write .",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down"
