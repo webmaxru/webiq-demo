@@ -63,6 +63,27 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+      - name: Validate Web IQ key before changing Azure
+        run: |
+          if [ -z "$WEBIQ_API_KEY" ]; then
+            echo "::error::The WEBIQ_API_KEY repository secret is not configured."
+            exit 1
+          fi
+          node --input-type=module -e "
+            import { WebIQClient } from '@microsoft/webiq';
+            const client = new WebIQClient({ apiKey: process.env.WEBIQ_API_KEY, timeout: 60000 });
+            try {
+              await client.web.search('Microsoft Web IQ', { maxResults: 1 });
+              console.log('WEBIQ_API_KEY authenticated.');
+            } catch (err) {
+              console.log('::error::WEBIQ_API_KEY failed Web IQ authentication: ' + (err.statusCode ?? '') + ' ' + (err.errorCode ?? err.name) + ' ' + err.message + '. Rotate the repository secret.');
+              process.exit(1);
+            } finally {
+              await client.close();
+            }
+          "
+        working-directory: server
+
       - name: Sign in to Azure
         uses: azure/login@v2
         with:
